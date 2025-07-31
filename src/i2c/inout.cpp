@@ -1,4 +1,4 @@
-#include "inout.h"
+#include "i2c/inout.h"
 
 #ifdef Adafruit
   Adafruit_PCF8574 pcf8574_R1;

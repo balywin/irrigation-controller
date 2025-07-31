@@ -1,4 +1,4 @@
-#include "oled.h"
+#include "i2c/oled.h"
 
 Adafruit_SH1106G oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
