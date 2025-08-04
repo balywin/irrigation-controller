@@ -3,7 +3,7 @@
 #define FILLING_MAX_MINUTES           40
 #define GRASS_MAX_MINUTES             20
 #define DRIP_MAX_MINUTES             120
-#define LEAKAGE_DETECTOR_TRESHOLD      3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
+#define LEAKAGE_DETECTOR_THRESHOLD     3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
 
 #define HIGH_LEVEL_PRESSURE      1800000L
 #define LOW_LEVEL_PRESSURE       -240000L
@@ -17,7 +17,7 @@
 
 // ______________ PCF DIGITAL OUTPUTS ___________________________
 #define PUMP_WELL_OUTPUT_NUMBER        1        // IBO well pump              - filling the tank
-#define PUMP_GRASS_OUTPUT_NUMBER       2        // Gardena 4100 gound pump    - grass irrigation
+#define PUMP_GRASS_OUTPUT_NUMBER       2        // Gardena 4100 ground pump   - grass irrigation
 #define PUMP_DRIP_OUTPUT_NUMBER        3        // Jecod DCS 1200 30W pump    - dripping irrigation
 #define MAIN_VALVE_GRASS               4        // Main valve of grass system - from Gardena 4100
 #define MAIN_VALVE_DRIP                5        // Main valve of drip system  - from Jecod DCS 1200

@@ -64,7 +64,7 @@ int8_t previousNetworkStatus = -1;
 uint8_t previousFilteredState;
 uint8_t i1State;
 uint8_t i2State;
-// -------------- Pump realted -----------------------
+// -------------- Pump related -----------------------
 uint32_t pressureRaw = 0;
 bool fillingEnabled = false;
 bool prevFillingEnabled = false;
@@ -88,7 +88,7 @@ char* ip2CharArray(IPAddress ip) {
 }
 
 void setup_NTP() {
-  ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timetone +180min (+2 GMT + 1h summertime offset)
+  ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
   ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)
   ntp.begin();
 }
@@ -145,7 +145,7 @@ void checkConnection() {
       Serial.println(s);oled_show(1, s);
 
       setup_NTP();  // This also updates the time
-      Serial.println("NTP setup comlete.");
+      Serial.println("NTP setup complete.");
       if (ntp.epoch() > (24 * 60 * 60)) {
         adjustRtc(&ntp);
       }
@@ -170,7 +170,7 @@ void showPressure(uint8_t code, uint8_t line, uint8_t size) {
   } else {
     sprintf(pressure, "%d ", ((long) pressureRaw) / 1024);
     oled_show(line, pressure, size);
-    Serial.print("Preessure raw value: ");
+    Serial.print("Pressure raw value: ");
     Serial.println((long) pressureRaw);
   }
 }
@@ -221,7 +221,7 @@ void setup() {
     rtcReady = true;
     timeSet = !rtc.lostPower();
   } else {
-    Serial.println(" *** Error intializing RTC ***");
+    Serial.println(" *** Error initializing RTC ***");
     Serial.flush();
   }
   // Init OLED
@@ -243,8 +243,8 @@ void setup() {
   networkInit();
   oled_show(1, "Network started.");
 
-  Serial.print("Level treshold: ");Serial.println(LEVEL_FILTERING_COUNTER_THRESHOLD);
-  Serial.print("Button treshold: ");Serial.println(BUTTON_FILTERING_COUNTER_THRESHOLD);
+  Serial.print("Level threshold: ");Serial.println(LEVEL_FILTERING_COUNTER_THRESHOLD);
+  Serial.print("Button threshold: ");Serial.println(BUTTON_FILTERING_COUNTER_THRESHOLD);
   filterState.threshold[TANK_UPPER_SWITCH_INPUT_NUMBER - 1] = LEVEL_FILTERING_COUNTER_THRESHOLD;
   filterState.threshold[TANK_LOWER_SWITCH_INPUT_NUMBER - 1] = LEVEL_FILTERING_COUNTER_THRESHOLD;
   filterState.threshold[BUTTON_FILLING - 1] = BUTTON_FILTERING_COUNTER_THRESHOLD;
@@ -258,7 +258,7 @@ void loop() {
   if (getNetworkIsConnected() && ntp.update()) {
     Serial.print("Time synced: " + String(ntp.formattedTime("%T")) + " , ");
     adjustRtc(&ntp);
-    ntp.updateInterval(60 * 60 * 1000);     // initially on 1m, after the time is set update the inerval to 1h
+    ntp.updateInterval(60 * 60 * 1000);     // initially on 1m, after the time is set update the interval to 1h
   }
   currentTime = millis();
   if ((currentTime - lastTimeShowTime) >= (TIME_UPDATE_PERIOD_MS/(2-uint8_t(timeSet)))) {
@@ -365,7 +365,7 @@ void ScanInputs()
   
   if (fillingEnabled && (fillingEnabled != prevFillingEnabled)) {
     leakageDetectorCounter++;
-    if (leakageDetectorCounter > LEAKAGE_DETECTOR_TRESHOLD) {
+    if (leakageDetectorCounter > LEAKAGE_DETECTOR_THRESHOLD) {
       fillingRequested = false;
     }
   }

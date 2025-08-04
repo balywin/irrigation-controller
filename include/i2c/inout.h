@@ -15,7 +15,7 @@ extern PCF8574 pcf8574_I2;
 // State for each bit: 0-255 counters (max 255), and the filtered output
 typedef struct {
     uint32_t counter[8];     // Counters for each bit
-    uint32_t threshold[8];    // debounce treshold value for each bit. Set it on init.
+    uint32_t threshold[8];    // debounce threshold value for each bit. Set it on init.
     uint8_t  last_state;     // Last known filtered state
 } FilterState;
 
