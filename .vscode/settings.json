@@ -11,6 +11,7 @@
         "memory": "cpp",
         "random": "cpp",
         "initializer_list": "cpp",
-        "system_error": "cpp"
+        "system_error": "cpp",
+        "list": "cpp"
     }
 }

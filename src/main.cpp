@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include "file_config.h"
+#include "hw_info.h"
 #include "i2c/hw_config.h"
 #include "main.h"
 
@@ -58,6 +60,7 @@ unsigned long lastTimeScanButtons = 0;
 unsigned long lastTimeGrassIrrigationRequested = 0;
 unsigned long lastTimeDripIrrigationRequested = 0;
 
+uint8_t pcf_init_code;
 // ----------- Connection status ---------------------
 bool previousConnected = false;
 int8_t previousNetworkStatus = -1;
@@ -180,10 +183,10 @@ void showTime() {
   char line[24];
   if (rtcReady) {
     sprintf(tm, "%02u:%02u:%02u", rtc.now().hour(), rtc.now().minute(), rtc.now().second());
-    sprintf(line, "%.2f C    %s", rtc.getTemperature(), (timeSet || timeBlink) ? tm : "        ");
+    sprintf(line, "%.2f C   %s %c", rtc.getTemperature(), (timeSet || timeBlink) ? tm : "        ", pcf_init_code ? 'E' : ' ');
   } else {
     sprintf(tm, "%02u:%02u:%02u", ntp.hours(), ntp.minutes(), ntp.seconds());
-    sprintf(line, "---      %s", (timeSet || timeBlink) ? tm : "          ");
+    sprintf(line, "---     %s %c", (timeSet || timeBlink) ? tm : "         ", pcf_init_code ? 'E' : ' ');
   }
   oled_show(0, line, 1);
   timeBlink = !timeBlink;
@@ -214,6 +217,9 @@ void setup() {
   while (!Serial)
     delay(100);
 
+  printHwInfo();
+  initFs();
+  loadConfig();
   // Set I2C pins
   Wire.setPins(I2C_SDA, I2C_SCL);
 
@@ -230,10 +236,10 @@ void setup() {
 //  test_oled();
 #ifndef DEV_BOARD_OLED 
   // Init PCFs
-  uint8_t code = init_pcfs();
-  String s = "Init PCFs... " + (code == 0 ? "OK" : "Error " + String(code, HEX));
+  pcf_init_code = init_pcfs();
+  String s = "Init PCFs... " + (pcf_init_code == 0 ? "OK" : "Error " + String(pcf_init_code, HEX));
   Serial.println(s);oled_show(0, s);
-  code = pressureSensor.init();
+  uint8_t code = pressureSensor.init();
   s = "Init H710B... " + (code == HX710B_OK ? "OK" : "Error " + String(code, HEX));
   Serial.println(s);oled_show(0, s);
 
@@ -299,8 +305,10 @@ void loop() {
   // }
 
 #ifndef DEV_BOARD_OLED  
-  setPumpWell(fillingRequested && fillingEnabled);
-  setPumpGrass(grassIrrigationRequested && !drainingDisabled);
+  if (!pcf_init_code) {
+    setPumpWell(fillingRequested && fillingEnabled);
+    setPumpGrass(grassIrrigationRequested && !drainingDisabled);
+  }
 #endif
 
   httpHandler();
