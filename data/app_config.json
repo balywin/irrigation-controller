@@ -1,0 +1,5 @@
+{
+  "device_name": "ESP32-Sensor",
+  "interval": 5000,
+  "enabled": true
+}

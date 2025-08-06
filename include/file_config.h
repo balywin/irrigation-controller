@@ -1,0 +1,3 @@
+
+bool initFs();
+bool loadConfig();
