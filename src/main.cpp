@@ -34,10 +34,10 @@ HX710B pressureSensor(HX_SCK_PIN, HX_DAT_PIN);
 #define DRIP_MAX_MS    (DRIP_MAX_MINUTES * 60*1000UL)    // 120 minutes
 
 #define TIME_UPDATE_PERIOD_MS  1000UL
-#define INPUTS_SHOW_PERIOD_MS   250UL
+#define INPUTS_SHOW_PERIOD_MS   200UL
 #define INPUT1_SCAN_PERIOD_MS     2UL
-#define LEVEL_FILTERING_SECONDS   30   // hold the filling 60 seconds on level down
-#define BUTTON_FILTERING_MS       40   // hold the filling 60 seconds on level down
+#define LEVEL_FILTERING_SECONDS  30   // hold the filling 30 seconds on level down
+#define BUTTON_FILTERING_MS      50   // hold the filling 60 seconds on level down
 
 #define LEVEL_FILTERING_COUNTER_THRESHOLD (LEVEL_FILTERING_SECONDS * 1000 / INPUT1_SCAN_PERIOD_MS)
 #define BUTTON_FILTERING_COUNTER_THRESHOLD (BUTTON_FILTERING_MS / INPUT1_SCAN_PERIOD_MS)
