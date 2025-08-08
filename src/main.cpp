@@ -84,12 +84,6 @@ bool timeSet = false;
 bool rtcReady = false;
 bool timeBlink = false;
 
-char* ip2CharArray(IPAddress ip) {
-  static char a[24];
-  sprintf(a, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-  return a;
-}
-
 void setup_NTP() {
   ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
   ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)

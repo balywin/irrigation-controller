@@ -173,3 +173,9 @@ void httpHandler() {
     flagReadDi = 0;
   }
 }
+
+char* ip2CharArray(IPAddress ip) {
+  static char a[24];
+  sprintf(a, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  return a;
+}

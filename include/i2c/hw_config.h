@@ -18,6 +18,6 @@
 
 #ifdef WIFI_NO_ETHERNET
   // Replace with your network credentials
-  #define AP_SSID "Vivacar"
+  #define AP_SSID "VivacarM"
   #define AP_PASSWORD "@Titi14#Papazov22%"
 #endif

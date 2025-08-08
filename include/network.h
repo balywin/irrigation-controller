@@ -14,4 +14,4 @@ bool getNetworkIsConnected();
 void networkInit();
 void serverInit();
 void httpHandler();
-
+char* ip2CharArray(IPAddress ip);

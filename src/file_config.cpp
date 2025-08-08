@@ -23,7 +23,7 @@ void printTestValues(const JsonDocument& doc) {
   bool enabled = doc["enabled"];
 
   // Print values
-  Serial.println("Config Loaded:");
+  Serial.println("Config loaded:");
   Serial.printf("  - Device Name: %s\n", deviceName);
   Serial.printf("  - Interval: %d ms\n", interval);
   Serial.printf("  - Enabled: %s\n", enabled ? "true" : "false");
