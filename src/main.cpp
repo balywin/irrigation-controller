@@ -374,6 +374,7 @@ void ScanInputs()
   if (fillingEnabled && (fillingEnabled != prevFillingEnabled)) {
     leakageDetectorCounter++;
     if (leakageDetectorCounter > LEAKAGE_DETECTOR_THRESHOLD) {
+      Serial.println("Stop filling due to leaks.");
       fillingRequested = false;
     }
   }

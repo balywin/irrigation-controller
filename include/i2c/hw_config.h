@@ -1,12 +1,16 @@
-#define DEV_BOARD_OLED
-//#define OLED_SSD1306
-//#define WIFI_NO_ETHERNET
+//#define DEV_BOARD_OLED
+#define OLED_SSD1306
+#define WIFI_NO_ETHERNET
 
 #ifdef DEV_BOARD_OLED
   #define I2C_SDA 5
   #define I2C_SCL 4
-  #define WIFI_NO_ETHERNET
-  #define OLED_SSD1306
+  #ifndef WIFI_NO_ETHERNET
+    #define WIFI_NO_ETHERNET
+  #endif
+  #ifndef OLED_SSD1306
+    #define OLED_SSD1306
+  #endif
 #else
   #define I2C_SDA 4
   #define I2C_SCL 5
