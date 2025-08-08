@@ -1,7 +1,7 @@
 #include "i2c/hw_config.h"
 
-#define FILLING_MAX_MINUTES           40
-#define GRASS_MAX_MINUTES             20
+#define FILLING_MAX_MINUTES           20
+#define GRASS_MAX_MINUTES             30
 #define DRIP_MAX_MINUTES             120
 #define LEAKAGE_DETECTOR_THRESHOLD     3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
 
