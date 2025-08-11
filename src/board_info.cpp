@@ -1,5 +1,5 @@
 #include <Arduino.h>
-void printHwInfo() {
+void printBoardInfo() {
   Serial.println("------------------------\nESP32 Memory Info:");
 
   // Flash memory

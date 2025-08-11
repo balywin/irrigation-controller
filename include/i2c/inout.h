@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <PCF8574.h>
 
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 
 // Set relay output i2c address
 extern PCF8574 pcf8574_R1;

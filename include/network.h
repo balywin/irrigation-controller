@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 
 #ifndef WIFI_NO_ETHERNET
   #define ETH_CLK_MODE    ETH_CLOCK_GPIO17_OUT

@@ -1,4 +1,4 @@
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 #include "network.h"
 
 #ifdef WIFI_NO_ETHERNET
@@ -27,12 +27,13 @@ short relayStates[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // s
 
   void networkInit() {
 #ifdef WIFI_NO_ETHERNET
-    Serial.print("\nStarting WiFi on " + String(ARDUINO_BOARD));
+    Serial.print("Starting WiFi on " + String(ARDUINO_BOARD));
+    Serial.print(", looking for SSID '" + String(AP_SSID) + "'");
     WiFi.begin(AP_SSID, AP_PASSWORD);
     WiFi.mode(WIFI_STA);
 #else
     Serial.print("\nStarting " + String(WEBSERVER_WT32_ETH01_VERSION) + " on " + String(ARDUINO_BOARD));
-    Serial.println(" with " + String(SHIELD_TYPE));
+    Serial.print(" with " + String(SHIELD_TYPE));
 
     // To be called before ETH.begin()
     WT32_ETH01_onEvent();

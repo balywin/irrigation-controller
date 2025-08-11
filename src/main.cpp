@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include "file_config.h"
-#include "hw_info.h"
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 #include "main.h"
+#include "board_info.h"
 
 #define DEBUG_ETHERNET_WEBSERVER_PORT       Serial
 #define NTP_DBG_PORT                        Serial
@@ -112,13 +112,13 @@ void checkConnection() {
   if (networkStatus != previousNetworkStatus) {
 #ifdef WIFI_NO_ETHERNET  
   switch (networkStatus) {
-    case 0: s = "WiFi Idle      "; break;
-    case 1: s = "SSID Not Found "; break;
-    case 2: s = "WiFi Scanned   "; break;
-    case 3: s = "WiFi Connected "; break;
+    case 0: s = "WiFi Idle"; break;
+    case 1: s = String(AP_SSID) + " Not Found"; break;
+    case 2: s = "WiFi Scanned"; break;
+    case 3: s = "WiFi Connected"; break;
     case 4: s = "WiFi ConnFailed"; break;
     case 5: s = "Connection Lost"; break;
-    case 6: s = "Disconnected   "; break;
+    case 6: s = "Disconnected"; break;
     default: s = "Unknown WiFi Status"; break;
   }
 #else
@@ -138,8 +138,9 @@ void checkConnection() {
         s = "Waiting for DHCP...";
         Serial.println(s);oled_show(1, s);
       }
-#endif      
+#else
       s = "";
+#endif
     } else {
       s = String(ip2CharArray(getNetworkLocalIp()));
       Serial.println(s);oled_show(1, s);
@@ -235,7 +236,7 @@ void setup() {
   while (!Serial)
     delay(100);
 
-  printHwInfo();
+  printBoardInfo();
   initFs();
   loadConfig();
   // Set I2C pins

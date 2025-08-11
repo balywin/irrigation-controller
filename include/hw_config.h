@@ -1,17 +1,31 @@
-#include "hw_config.h"
+//#define DEV_BOARD_OLED
+//#define OLED_SSD1306
+#define WIFI_NO_ETHERNET
 
-#define FILLING_MAX_MINUTES           20
-#define GRASS_MAX_MINUTES             30
-#define DRIP_MAX_MINUTES             120
-#define LEAKAGE_DETECTOR_THRESHOLD     3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
+#ifdef DEV_BOARD_OLED
+  #define I2C_SDA 5
+  #define I2C_SCL 4
+  #ifndef WIFI_NO_ETHERNET
+    #define WIFI_NO_ETHERNET
+  #endif
+  #ifndef OLED_SSD1306
+    #define OLED_SSD1306
+  #endif
+#else
+  #define I2C_SDA 4
+  #define I2C_SCL 5
+#endif
 
-#define LEVEL_FILTERING_SECONDS          12   // hold the filling 30 seconds on level down
-#define BUTTON_FILTERING_MS              50   // hold the filling 60 seconds on level down
-#define GRASS_PUMP_START_DELAY_SECONDS    8   // Open the Main Valve, then 8 seconds later start the pump
+#ifdef WIFI_NO_ETHERNET
+  // Replace with your network credentials
+#ifdef DEV_BOARD_OLED
+  #define AP_SSID "VivacarM"
+#else
+  #define AP_SSID "balywin"
+#endif
+  #define AP_PASSWORD "@Titi14#Papazov22%"
+#endif
 
-
-#define HIGH_LEVEL_PRESSURE      1800000L
-#define LOW_LEVEL_PRESSURE       -240000L
 // ______________ PCF DIGITAL INPUTS ___________________________
 #define TANK_UPPER_SWITCH_INPUT_NUMBER 1        // NO Switch to Gnd, i.e. 0 when FULL  - to disable Well Pump
 #define TANK_LOWER_SWITCH_INPUT_NUMBER 2        // NO Switch to Gnd, i.e. 1 when EMPTY - to disable Gras & Drip Pumps and close both Main Valves
@@ -37,25 +51,3 @@
 #define DRIP_ZONE_2        5
 #define DRIP_ZONE_3        6
 
-
-// ____________________________________________________________________________________________
-
-void ScanInputs();
-void setGrassMainValve(bool value);
-void setDripMainValve(bool value);
-void setPumpWell(bool value);   // pump in the well
-void setPumpGrass(bool value);  // pump of grass system
-void setPumpDrip(bool value);   // pump of drip system
-bool getPumpWell();
-bool getPumpGrass();
-bool getPumpDrip();
-
-void setOutput(uint8_t output_number, bool value);
-bool getOutput(uint8_t output_number);
-bool getInput(uint8_t input_number);
-void handleButtons(uint8_t filtered);
-
-// extern bool WT32_ETH01_eth_connected;
-// extern void WT32_ETH01_onEvent();
-// extern void WT32_ETH01_waitForConnect();
-//extern bool WT32_ETH01_isConnected();
