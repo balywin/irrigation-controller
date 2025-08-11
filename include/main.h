@@ -5,6 +5,11 @@
 #define DRIP_MAX_MINUTES             120
 #define LEAKAGE_DETECTOR_THRESHOLD     3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
 
+#define LEVEL_FILTERING_SECONDS          12   // hold the filling 30 seconds on level down
+#define BUTTON_FILTERING_MS              50   // hold the filling 60 seconds on level down
+#define GRASS_PUMP_START_DELAY_SECONDS    8   // Open the Main Valve, then 8 seconds later start the pump
+
+
 #define HIGH_LEVEL_PRESSURE      1800000L
 #define LOW_LEVEL_PRESSURE       -240000L
 // ______________ PCF DIGITAL INPUTS ___________________________
@@ -19,25 +24,31 @@
 #define PUMP_WELL_OUTPUT_NUMBER        1        // IBO well pump              - filling the tank
 #define PUMP_GRASS_OUTPUT_NUMBER       2        // Gardena 4100 ground pump   - grass irrigation
 #define PUMP_DRIP_OUTPUT_NUMBER        3        // Jecod DCS 1200 30W pump    - dripping irrigation
-#define MAIN_VALVE_GRASS               4        // Main valve of grass system - from Gardena 4100
-#define MAIN_VALVE_DRIP                5        // Main valve of drip system  - from Jecod DCS 1200
+#define MAIN_VALVE_GRASS              16        // Main valve of grass system - from Gardena 4100
+#define MAIN_VALVE_DRIP               15        // Main valve of drip system  - from Jecod DCS 1200
 
-#define GRASS_ZONE_1       9
-#define GRASS_ZONE_2      10
-#define GRASS_ZONE_3      11
-#define GRASS_ZONE_4      12
-#define GRASS_ZONE_5      13
-#define DRIP_ZONE_1       14
-#define DRIP_ZONE_2       15
-#define DRIP_ZONE_3       16
+#define GRASS_ZONE_1      13
+#define GRASS_ZONE_2      14
+#define GRASS_ZONE_3      12
+#define GRASS_ZONE_4       9
+#define GRASS_ZONE_5      11
+#define GRASS_ZONE_5      10
+#define DRIP_ZONE_1        4
+#define DRIP_ZONE_2        5
+#define DRIP_ZONE_3        6
 
 
 // ____________________________________________________________________________________________
 
 void ScanInputs();
+void setGrassMainValve(bool value);
+void setDripMainValve(bool value);
 void setPumpWell(bool value);   // pump in the well
 void setPumpGrass(bool value);  // pump of grass system
 void setPumpDrip(bool value);   // pump of drip system
+bool getPumpWell();
+bool getPumpGrass();
+bool getPumpDrip();
 
 void setOutput(uint8_t output_number, bool value);
 bool getOutput(uint8_t output_number);

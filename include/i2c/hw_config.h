@@ -1,5 +1,5 @@
 //#define DEV_BOARD_OLED
-#define OLED_SSD1306
+//#define OLED_SSD1306
 #define WIFI_NO_ETHERNET
 
 #ifdef DEV_BOARD_OLED
@@ -18,6 +18,6 @@
 
 #ifdef WIFI_NO_ETHERNET
   // Replace with your network credentials
-  #define AP_SSID "VivacarM"
+  #define AP_SSID "balywin"
   #define AP_PASSWORD "@Titi14#Papazov22%"
 #endif

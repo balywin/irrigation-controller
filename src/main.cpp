@@ -29,15 +29,14 @@ NTP ntp(ntpUDP);
 
 HX710B pressureSensor(HX_SCK_PIN, HX_DAT_PIN);
 
+
+#define TIME_UPDATE_PERIOD_MS  1000UL
+#define STATUS_SHOW_PERIOD_MS   200UL
+#define INPUT1_SCAN_PERIOD_MS     5UL
+
 #define FILLING_MAX_MS (FILLING_MAX_MINUTES * 60*1000UL) // 40 minutes
 #define GRASS_MAX_MS   (GRASS_MAX_MINUTES * 60*1000UL)   // 20 minutes
 #define DRIP_MAX_MS    (DRIP_MAX_MINUTES * 60*1000UL)    // 120 minutes
-
-#define TIME_UPDATE_PERIOD_MS  1000UL
-#define INPUTS_SHOW_PERIOD_MS   200UL
-#define INPUT1_SCAN_PERIOD_MS     2UL
-#define LEVEL_FILTERING_SECONDS  30   // hold the filling 30 seconds on level down
-#define BUTTON_FILTERING_MS      50   // hold the filling 60 seconds on level down
 
 #define LEVEL_FILTERING_COUNTER_THRESHOLD (LEVEL_FILTERING_SECONDS * 1000 / INPUT1_SCAN_PERIOD_MS)
 #define BUTTON_FILTERING_COUNTER_THRESHOLD (BUTTON_FILTERING_MS / INPUT1_SCAN_PERIOD_MS)
@@ -59,6 +58,10 @@ unsigned long lastTimeShowInputs  = 0;
 unsigned long lastTimeScanButtons = 0;
 unsigned long lastTimeGrassIrrigationRequested = 0;
 unsigned long lastTimeDripIrrigationRequested = 0;
+uint32_t oldTusCnt;
+uint32_t oldTlsCnt;
+bool prevGrassIrrigationState = false;
+uint32_t grassPumpStartTime;
 
 uint8_t pcf_init_code;
 // ----------- Connection status ---------------------
@@ -188,20 +191,41 @@ void showTime() {
 
 void showStates() {
   char tm[14];
-  char inputs[24];
+  char states[24];
+  char pumpStates[8];
   int32_t irrigationRemainingMinutes = (millis() - lastTimeGrassIrrigationRequested) / 60000L;
-  sprintf(inputs, "%02X %02X %d%d %d%d G%02d L%d ", i1State, i2State, fillingRequested, fillingEnabled, 
+  sprintf(states, "%02X %02X %d%d %d%d G%02d L%d ", i1State, i2State, fillingRequested, fillingEnabled, 
           grassIrrigationRequested, drainingDisabled, irrigationRemainingMinutes, leakageDetectorCounter);
-  //Serial.println(inputs);
-  oled_show(7, inputs, 1);
+  //Serial.println(states);
+  oled_show(7, states, 1);
 
-  sprintf(inputs, "FiVal: %02X", filterState.last_state);
-  oled_show(4, inputs, 1);
+  uint32_t tusCnt = filterState.counter[TANK_UPPER_SWITCH_INPUT_NUMBER-1];
+//  sprintf(pumpStates, "%c%c%c", getPumpWell() ? 'F' : ' ', getPumpGrass ? 'G' : ' ', getPumpDrip ? 'D' : ' ');
+  sprintf(pumpStates, "%c%c%c", fillingRequested ? 'F' : ' ', grassIrrigationRequested ? 'G' : ' ', dripIrrigationRequested ? 'D' : ' ');
+  if (tusCnt) {
+    if (tusCnt != oldTusCnt) {
+      sprintf(states, "%s U%.1f ", pumpStates, tusCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
+      oled_show(4, states, 2);
+    }
+  } else {
+    oled_show(4, pumpStates, 2);
+  }
+  oldTusCnt = tusCnt;
+
+  uint32_t tlsCnt = filterState.counter[TANK_LOWER_SWITCH_INPUT_NUMBER-1];
+  if (tlsCnt != oldTlsCnt) {
+    if (tlsCnt) {
+      sprintf(states, "%s L%.1f ", pumpStates, tlsCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
+      oled_show(4, states, 2);
+    }
+    oldTlsCnt = tlsCnt;
+  }
+
   if (filterState.last_state != previousFilteredState) {
     previousFilteredState = filterState.last_state;
     sprintf(tm, "%02u:%02u:%02u: ", rtc.now().hour(), rtc.now().minute(), rtc.now().second());
     Serial.print(tm);
-    Serial.println(inputs);
+    Serial.println(states);
   }
 }
 
@@ -276,7 +300,7 @@ void loop() {
     }
   }
   currentTime = millis();
-  if ((currentTime - lastTimeShowInputs) >= (INPUTS_SHOW_PERIOD_MS)) {
+  if ((currentTime - lastTimeShowInputs) >= (STATUS_SHOW_PERIOD_MS)) {
     showStates();
     lastTimeShowInputs = currentTime;
   }
@@ -301,11 +325,19 @@ void loop() {
 #ifndef DEV_BOARD_OLED  
   if (!pcf_init_code) {
     setPumpWell(fillingRequested && fillingEnabled);
-    setPumpGrass(grassIrrigationRequested && !drainingDisabled);
+    bool grassIrrigationState = grassIrrigationRequested && !drainingDisabled;
+    if (grassIrrigationState != prevGrassIrrigationState) {
+      if (grassIrrigationState) {
+        grassPumpStartTime = millis();
+      }
+      prevGrassIrrigationState = grassIrrigationState;
+    }
+    bool delayTimePassed = (millis() - grassPumpStartTime > GRASS_PUMP_START_DELAY_SECONDS * 1000UL);
+    setPumpGrass(grassIrrigationState && delayTimePassed);
+    setGrassMainValve(grassIrrigationState);
   }
 #endif
-
-  httpHandler();
+  serverLoop();
 }
 
 void setOutput(uint8_t output_number, bool value) {
@@ -341,6 +373,14 @@ bool getInput(uint8_t input_number) {
     return pcf8574_I2.digitalRead(input_number - 9, true) ? true : false;
 }
 
+void setGrassMainValve(bool value) {
+  setOutput(MAIN_VALVE_GRASS, !value);
+}
+
+void setDripMainValve(bool value) {
+  setOutput(MAIN_VALVE_DRIP, !value);
+}
+
 void setPumpWell(bool value) {
   setOutput(PUMP_WELL_OUTPUT_NUMBER, !value);
 }
@@ -351,6 +391,18 @@ void setPumpGrass(bool value) {
 
 void setPumpDrip(bool value) {
   setOutput(PUMP_DRIP_OUTPUT_NUMBER, !value);
+}
+
+bool getPumpWell() {
+  return !getOutput(PUMP_WELL_OUTPUT_NUMBER);
+}
+
+bool getPumpGrass() {
+  return !getOutput(PUMP_GRASS_OUTPUT_NUMBER);
+}
+
+bool getPumpDrip() {
+  return !getOutput(PUMP_DRIP_OUTPUT_NUMBER);
 }
 
 void ScanInputs()
