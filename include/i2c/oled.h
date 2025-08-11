@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 
 // Define OLED_SSD1306 to use SSD1306, SH1106 is default
 

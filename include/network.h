@@ -1,11 +1,14 @@
 #include <Arduino.h>
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 
 #ifndef WIFI_NO_ETHERNET
   #define ETH_CLK_MODE    ETH_CLOCK_GPIO17_OUT
   #define ETH_PHY_POWER   -1
   #define ETH_PHY_ADDR    0
 #endif
+
+extern WiFiCredentials[MAX_SSID_NUMBER] wifiCredentials;
+extern uint8_t ssid_index;
 
 uint8_t getNetworkStatus();
 IPAddress getNetworkLocalIp();
@@ -14,4 +17,5 @@ bool getNetworkIsConnected();
 void networkInit();
 void serverInit();
 void httpHandler();
+void serverLoop();
 char* ip2CharArray(IPAddress ip);

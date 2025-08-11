@@ -69,14 +69,15 @@ uint8_t filter_inputs(uint8_t raw_input, FilterState *state) {
     if (new_bit == last_bit) {
       state->counter[i] = 0;  // reset counter since value matches output
     } else {
-      if (++state->counter[i] >= state->threshold[i]) {
+      if (state->counter[i] >= state->threshold[i]) {
         // Accept the new value after <threshold> consecutive reads
         if (new_bit)
           state->last_state |= (1 << i);
         else
           state->last_state &= ~(1 << i);
         state->counter[i] = 0;
-      }
+      } else 
+        state->counter[i]++;
     }
   }
   return state->last_state;

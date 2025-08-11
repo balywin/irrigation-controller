@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include "file_config.h"
-#include "hw_info.h"
-#include "i2c/hw_config.h"
+#include "hw_config.h"
 #include "main.h"
+#include "board_info.h"
 
 #define DEBUG_ETHERNET_WEBSERVER_PORT       Serial
 #define NTP_DBG_PORT                        Serial
@@ -29,26 +29,17 @@ NTP ntp(ntpUDP);
 
 HX710B pressureSensor(HX_SCK_PIN, HX_DAT_PIN);
 
-#define FILLING_MAX_MS (FILLING_MAX_MINUTES * 60*1000UL) // 40 minutes
-#define GRASS_MAX_MS   (GRASS_MAX_MINUTES * 60*1000UL)   // 20 minutes
-#define DRIP_MAX_MS    (DRIP_MAX_MINUTES * 60*1000UL)    // 120 minutes
+IrrigationConfig irrigationConfig;
 
 #define TIME_UPDATE_PERIOD_MS  1000UL
-#define INPUTS_SHOW_PERIOD_MS   200UL
-#define INPUT1_SCAN_PERIOD_MS     2UL
-#define LEVEL_FILTERING_SECONDS  30   // hold the filling 30 seconds on level down
-#define BUTTON_FILTERING_MS      50   // hold the filling 60 seconds on level down
+#define STATUS_SHOW_PERIOD_MS   200UL
+#define INPUT1_SCAN_PERIOD_MS     5UL
 
-#define LEVEL_FILTERING_COUNTER_THRESHOLD (LEVEL_FILTERING_SECONDS * 1000 / INPUT1_SCAN_PERIOD_MS)
-#define BUTTON_FILTERING_COUNTER_THRESHOLD (BUTTON_FILTERING_MS / INPUT1_SCAN_PERIOD_MS)
-
-// If no DHCP used, select a static IP address, subnet mask and a gateway IP address according to your local network
-// IPAddress myIP(192, 168, 255, 201);
-// IPAddress mySN(255, 255, 255, 0);
-// IPAddress myGW(192, 168, 255, 65);
-
-// ... and DNS Server IP
-// IPAddress myDNS(8, 8, 8, 8);
+uint32_t fillingMaxMs;
+uint32_t grassMaxMs;
+uint32_t dripMaxMs;
+uint32_t levelFilteringCounterThreshold;
+uint32_t buttonFilteringCounterThreshold;
 
 // ------------- Time --------------------------------
 unsigned long currentTime = millis();
@@ -59,6 +50,10 @@ unsigned long lastTimeShowInputs  = 0;
 unsigned long lastTimeScanButtons = 0;
 unsigned long lastTimeGrassIrrigationRequested = 0;
 unsigned long lastTimeDripIrrigationRequested = 0;
+uint32_t oldTusCnt;
+uint32_t oldTlsCnt;
+bool prevGrassIrrigationState = false;
+uint32_t grassPumpStartTime;
 
 uint8_t pcf_init_code;
 // ----------- Connection status ---------------------
@@ -84,84 +79,28 @@ bool timeSet = false;
 bool rtcReady = false;
 bool timeBlink = false;
 
-void setup_NTP() {
-  ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
-  ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)
-  ntp.begin();
-}
+void applyConfig() {
+  fillingMaxMs = irrigationConfig.fillingMaxMinutes * 60 * 1000UL; // 20 minutes
+  grassMaxMs   = irrigationConfig.grassMaxMinutes   * 60 * 1000UL; // 30 minutes
+  dripMaxMs    = irrigationConfig.dripMaxMinutes    * 60 * 1000UL;  // 120 minutes
 
-void adjustRtc(NTP *ntp) {
-    if (rtcReady) {
-      Serial.print("Adjusting RTC ... ");
-      rtc.adjust(DateTime(ntp->year(), ntp->month(), ntp->day(), ntp->hours(), ntp->minutes(), ntp->seconds()));
-      Serial.println("done.");
-    } else {
-      Serial.println("RTC not ready to be adjusted.");
-    }
-//    rtc.adjust(ntp->epoch());
-    timeSet = true;
-}
+  levelFilteringCounterThreshold = (irrigationConfig.levelFilteringSeconds * 1000 / INPUT1_SCAN_PERIOD_MS);
+  buttonFilteringCounterThreshold = (irrigationConfig.buttonFilteringMs / INPUT1_SCAN_PERIOD_MS);
+  filterState.threshold[TANK_UPPER_SWITCH_INPUT_NUMBER - 1] = levelFilteringCounterThreshold;
+  filterState.threshold[TANK_LOWER_SWITCH_INPUT_NUMBER - 1] = levelFilteringCounterThreshold;
+  filterState.threshold[BUTTON_FILLING - 1] = buttonFilteringCounterThreshold;
+  filterState.threshold[BUTTON_GRASS - 1] = buttonFilteringCounterThreshold;
+  filterState.threshold[BUTTON_DRIP - 1] = buttonFilteringCounterThreshold;
 
-void checkConnection() {
-  bool now_connected = getNetworkIsConnected();
-  int8_t networkStatus = getNetworkStatus();
-  String s;
-  if (networkStatus != previousNetworkStatus) {
-#ifdef WIFI_NO_ETHERNET  
-  switch (networkStatus) {
-    case 0: s = "WiFi Idle      "; break;
-    case 1: s = "SSID Not Found "; break;
-    case 2: s = "WiFi Scanned   "; break;
-    case 3: s = "WiFi Connected "; break;
-    case 4: s = "WiFi ConnFailed"; break;
-    case 5: s = "Connection Lost"; break;
-    case 6: s = "Disconnected   "; break;
-    default: s = "Unknown WiFi Status"; break;
-  }
-#else
-    if (networkStatus == 1) {
-      s = "Cable connected.";
-    } else {
-      s = "Cable disconnected.";
-    }
-#endif  
-    Serial.println(s);oled_show(1, s);
-    previousNetworkStatus = networkStatus;
-  }
-  if (now_connected != previousConnected) {
-    if (!now_connected) { 
-#ifndef WIFI_NO_ETHERNET  
-      if (networkStatus) {
-        s = "Waiting for DHCP...";
-        Serial.println(s);oled_show(1, s);
-      }
-#endif      
-      s = "";
-    } else {
-      s = String(ip2CharArray(getNetworkLocalIp()));
-      Serial.println(s);oled_show(1, s);
-
-      setup_NTP();  // This also updates the time
-      Serial.println("NTP setup complete.");
-      if (ntp.epoch() > (24 * 60 * 60)) {
-        adjustRtc(&ntp);
-      }
-
-      // start the web server on port 80
-      Serial.println("Starting Web server ...");
-      serverInit();
-      s = "Server started.";
-    }
-    if (s != "") Serial.println(s);
-    oled_show(2, s);
-    previousConnected = now_connected;
-  }
+  Serial.print("Level threshold: ");Serial.println(levelFilteringCounterThreshold);
+  Serial.print("Button threshold: ");Serial.println(buttonFilteringCounterThreshold);
 }
 
 void showPressure(uint8_t code, uint8_t line, uint8_t size) {
   char pressure[24];
   if ( code != HX710B_OK ) {
     sprintf(pressure, "err: %d", code);
+    oled_show(line, pressure, size);
     oled_show(line, pressure, size);
     Serial.println("Error reading pressure");
   } else {
@@ -188,20 +127,41 @@ void showTime() {
 
 void showStates() {
   char tm[14];
-  char inputs[24];
+  char states[24];
+  char pumpStates[8];
   int32_t irrigationRemainingMinutes = (millis() - lastTimeGrassIrrigationRequested) / 60000L;
-  sprintf(inputs, "%02X %02X %d%d %d%d G%02d L%d ", i1State, i2State, fillingRequested, fillingEnabled, 
+  sprintf(states, "%02X %02X %d%d %d%d G%02d L%d ", i1State, i2State, fillingRequested, fillingEnabled, 
           grassIrrigationRequested, drainingDisabled, irrigationRemainingMinutes, leakageDetectorCounter);
-  //Serial.println(inputs);
-  oled_show(7, inputs, 1);
+  //Serial.println(states);
+  oled_show(7, states, 1);
 
-  sprintf(inputs, "FiVal: %02X", filterState.last_state);
-  oled_show(4, inputs, 1);
+  uint32_t tusCnt = filterState.counter[TANK_UPPER_SWITCH_INPUT_NUMBER-1];
+//  sprintf(pumpStates, "%c%c%c", getPumpWell() ? 'F' : ' ', getPumpGrass ? 'G' : ' ', getPumpDrip ? 'D' : ' ');
+  sprintf(pumpStates, "%c%c%c", fillingRequested ? 'F' : ' ', grassIrrigationRequested ? 'G' : ' ', dripIrrigationRequested ? 'D' : ' ');
+  if (tusCnt) {
+    if (tusCnt != oldTusCnt) {
+      sprintf(states, "%s U%.1f ", pumpStates, tusCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
+      oled_show(4, states, 2);
+    }
+  } else {
+    oled_show(4, pumpStates, 2);
+  }
+  oldTusCnt = tusCnt;
+
+  uint32_t tlsCnt = filterState.counter[TANK_LOWER_SWITCH_INPUT_NUMBER-1];
+  if (tlsCnt != oldTlsCnt) {
+    if (tlsCnt) {
+      sprintf(states, "%s L%.1f ", pumpStates, tlsCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
+      oled_show(4, states, 2);
+    }
+    oldTlsCnt = tlsCnt;
+  }
+
   if (filterState.last_state != previousFilteredState) {
     previousFilteredState = filterState.last_state;
     sprintf(tm, "%02u:%02u:%02u: ", rtc.now().hour(), rtc.now().minute(), rtc.now().second());
     Serial.print(tm);
-    Serial.println(inputs);
+    Serial.println(states);
   }
 }
 
@@ -211,7 +171,7 @@ void setup() {
   while (!Serial)
     delay(100);
 
-  printHwInfo();
+  printBoardInfo();
   initFs();
   loadConfig();
   // Set I2C pins
@@ -243,14 +203,7 @@ void setup() {
   networkInit();
   oled_show(1, "Network started.");
 
-  Serial.print("Level threshold: ");Serial.println(LEVEL_FILTERING_COUNTER_THRESHOLD);
-  Serial.print("Button threshold: ");Serial.println(BUTTON_FILTERING_COUNTER_THRESHOLD);
-  filterState.threshold[TANK_UPPER_SWITCH_INPUT_NUMBER - 1] = LEVEL_FILTERING_COUNTER_THRESHOLD;
-  filterState.threshold[TANK_LOWER_SWITCH_INPUT_NUMBER - 1] = LEVEL_FILTERING_COUNTER_THRESHOLD;
-  filterState.threshold[BUTTON_FILLING - 1] = BUTTON_FILTERING_COUNTER_THRESHOLD;
-  filterState.threshold[BUTTON_GRASS - 1] = BUTTON_FILTERING_COUNTER_THRESHOLD;
-  filterState.threshold[BUTTON_DRIP - 1] = BUTTON_FILTERING_COUNTER_THRESHOLD;
-
+  applyConfig();
 } 
 
 void loop() {
@@ -265,18 +218,18 @@ void loop() {
     showTime();
     lastTimeShowTime = currentTime;
 
-    if ((grassIrrigationRequested && ((currentTime - lastTimeGrassIrrigationRequested) >= GRASS_MAX_MS))) {
+    if ((grassIrrigationRequested && ((currentTime - lastTimeGrassIrrigationRequested) >= grassMaxMs))) {
       grassIrrigationRequested = false;
       Serial.println("Grass irrigation complete");
     }
 
-    if ((dripIrrigationRequested && ((currentTime - lastTimeDripIrrigationRequested) >= DRIP_MAX_MS))) {
+    if ((dripIrrigationRequested && ((currentTime - lastTimeDripIrrigationRequested) >= dripMaxMs))) {
       dripIrrigationRequested = false;
       Serial.println("Drip irrigation complete");
     }
   }
   currentTime = millis();
-  if ((currentTime - lastTimeShowInputs) >= (INPUTS_SHOW_PERIOD_MS)) {
+  if ((currentTime - lastTimeShowInputs) >= (STATUS_SHOW_PERIOD_MS)) {
     showStates();
     lastTimeShowInputs = currentTime;
   }
@@ -301,11 +254,19 @@ void loop() {
 #ifndef DEV_BOARD_OLED  
   if (!pcf_init_code) {
     setPumpWell(fillingRequested && fillingEnabled);
-    setPumpGrass(grassIrrigationRequested && !drainingDisabled);
+    bool grassIrrigationState = grassIrrigationRequested && !drainingDisabled;
+    if (grassIrrigationState != prevGrassIrrigationState) {
+      if (grassIrrigationState) {
+        grassPumpStartTime = millis();
+      }
+      prevGrassIrrigationState = grassIrrigationState;
+    }
+    bool delayTimePassed = (millis() - grassPumpStartTime > GRASS_PUMP_START_DELAY_SECONDS * 1000UL);
+    setPumpGrass(grassIrrigationState && delayTimePassed);
+    setGrassMainValve(grassIrrigationState);
   }
 #endif
-
-  httpHandler();
+  serverLoop();
 }
 
 void setOutput(uint8_t output_number, bool value) {
@@ -341,6 +302,14 @@ bool getInput(uint8_t input_number) {
     return pcf8574_I2.digitalRead(input_number - 9, true) ? true : false;
 }
 
+void setGrassMainValve(bool value) {
+  setOutput(MAIN_VALVE_GRASS, !value);
+}
+
+void setDripMainValve(bool value) {
+  setOutput(MAIN_VALVE_DRIP, !value);
+}
+
 void setPumpWell(bool value) {
   setOutput(PUMP_WELL_OUTPUT_NUMBER, !value);
 }
@@ -351,6 +320,93 @@ void setPumpGrass(bool value) {
 
 void setPumpDrip(bool value) {
   setOutput(PUMP_DRIP_OUTPUT_NUMBER, !value);
+}
+
+bool getPumpWell() {
+  return !getOutput(PUMP_WELL_OUTPUT_NUMBER);
+}
+
+bool getPumpGrass() {
+  return !getOutput(PUMP_GRASS_OUTPUT_NUMBER);
+}
+
+bool getPumpDrip() {
+  return !getOutput(PUMP_DRIP_OUTPUT_NUMBER);
+}
+
+void setup_NTP() {
+  ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
+  ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)
+  ntp.begin();
+}
+
+void adjustRtc(NTP *ntp) {
+    if (rtcReady) {
+      Serial.print("Adjusting RTC ... ");
+      rtc.adjust(DateTime(ntp->year(), ntp->month(), ntp->day(), ntp->hours(), ntp->minutes(), ntp->seconds()));
+      Serial.println("done.");
+    } else {
+      Serial.println("RTC not ready to be adjusted.");
+    }
+//    rtc.adjust(ntp->epoch());
+    timeSet = true;
+}
+
+void checkConnection() {
+  bool now_connected = getNetworkIsConnected();
+  int8_t networkStatus = getNetworkStatus();
+  String s;
+  if (networkStatus != previousNetworkStatus) {
+#ifdef WIFI_NO_ETHERNET
+  switch (networkStatus) {
+    case 0: s = "WiFi Idle"; break;
+    case 1: s = String(AP_SSID) + " Not Found"; break;
+    case 2: s = "WiFi Scanned"; break;
+    case 3: s = "WiFi Connected"; break;
+    case 4: s = "WiFi ConnFailed"; break;
+    case 5: s = "Connection Lost"; break;
+    case 6: s = "Disconnected"; break;
+    default: s = "Unknown WiFi Status"; break;
+  }
+#else
+    if (networkStatus == 1) {
+      s = "Cable connected.";
+    } else {
+      s = "Cable disconnected.";
+    }
+#endif
+    Serial.println(s);oled_show(1, s);
+    previousNetworkStatus = networkStatus;
+  }
+  if (now_connected != previousConnected) {
+    if (!now_connected) {
+#ifndef WIFI_NO_ETHERNET
+      if (networkStatus) {
+        s = "Waiting for DHCP...";
+        Serial.println(s);oled_show(1, s);
+      }
+#else
+      s = "";
+#endif
+    } else {
+      s = String(ip2CharArray(getNetworkLocalIp()));
+      Serial.println(s);oled_show(1, s);
+
+      setup_NTP();  // This also updates the time
+      Serial.println("NTP setup complete.");
+      if (ntp.epoch() > (24 * 60 * 60)) {
+        adjustRtc(&ntp);
+      }
+
+      // start the web server on port 80
+      Serial.println("Starting Web server ...");
+      serverInit();
+      s = "Server started.";
+    }
+    if (s != "") Serial.println(s);
+    oled_show(2, s);
+    previousConnected = now_connected;
+  }
 }
 
 void ScanInputs()
