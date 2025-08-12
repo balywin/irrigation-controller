@@ -5,10 +5,32 @@
   #include <WiFi.h>
   #include <WiFiClient.h>
   #include <WebServer.h>
+  #define MAX_SSID_NUMBER 4
+  typedef struct {
+    String ssid;
+    String password;
+  } WiFiCredentials;
+
+  uint8_t ssid_index = 0;
+  WiFiCredentials[MAX_SSID_NUMBER] wifiCredentials = {
+    {"balywin", "@Titi14#Papazov22%"},
+    {"VivacarM", "@Titi14#Papazov22%"},
+    {"Vivacar", "@Titi14#Papazov22%"},
+    {"SSID_3", "password_3"},
+    {"SSID_4", "password_4"}
+  };
 #else
   #include <WebServer_WT32_ETH01.h>
 #endif
 #include <ElegantOTA.h>
+
+// If no DHCP used, select a static IP address, subnet mask and a gateway IP address according to your local network
+// IPAddress myIP(192, 168, 255, 201);
+// IPAddress mySN(255, 255, 255, 0);
+// IPAddress myGW(192, 168, 255, 65);
+
+// ... and DNS Server IP
+// IPAddress myDNS(8, 8, 8, 8);
 
 // listen for incoming clients
 WebServer server(80);
@@ -25,13 +47,13 @@ long connectionTimeoutMs = 2000;
 
 short relayStates[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // state of relays
 
-  void networkInit() {
-#ifdef WIFI_NO_ETHERNET
+void networkInit() {
+  #ifdef WIFI_NO_ETHERNET
     Serial.print("Starting WiFi on " + String(ARDUINO_BOARD));
     Serial.print(", looking for SSID '" + String(AP_SSID) + "'");
     WiFi.begin(AP_SSID, AP_PASSWORD);
     WiFi.mode(WIFI_STA);
-#else
+  #else
     Serial.print("\nStarting " + String(WEBSERVER_WT32_ETH01_VERSION) + " on " + String(ARDUINO_BOARD));
     Serial.print(" with " + String(SHIELD_TYPE));
 
@@ -45,34 +67,33 @@ short relayStates[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // s
     // Static IP, leave without this line to get IP via DHCP
     // bool config(IPAddress local_ip, IPAddress gateway, IPAddress subnet, IPAddress dns1 = 0, IPAddress dns2 = 0);
     //  ETH.config(myIP, myGW, mySN, myDNS);oled.setCursor(0, 0);oled.println(F("Manual IP config."));oled.display();
-#endif
+  #endif
     Serial.println(" ... started.");
-  }
+}
 
-  uint8_t getNetworkStatus() {
-#ifdef WIFI_NO_ETHERNET
+uint8_t getNetworkStatus() {
+  #ifdef WIFI_NO_ETHERNET
     return WiFi.status();
-#else
+  #else
     return ETH.linkUp() ? 1 : 0;
-#endif
-  }
+  #endif
+}
 
-  IPAddress getNetworkLocalIp() {
-#ifdef WIFI_NO_ETHERNET
+IPAddress getNetworkLocalIp() {
+  #ifdef WIFI_NO_ETHERNET
     return WiFi.localIP();
-#else
+  #else
     return ETH.localIP();
-#endif
-  }
+  #endif
+}
 
-  bool getNetworkIsConnected() {
-#ifdef WIFI_NO_ETHERNET
+bool getNetworkIsConnected() {
+  #ifdef WIFI_NO_ETHERNET
     return WiFi.isConnected();
-#else
+  #else
     return WT32_ETH01_isConnected();
-#endif
-  }
-
+  #endif
+}
 
 void onOTAStart() {
   // Log when OTA has started

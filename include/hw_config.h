@@ -1,4 +1,7 @@
-//#define DEV_BOARD_OLED
+//#ifndef HW_CONFIG_H
+//#define HW_CONFIG_H
+
+#define DEV_BOARD_OLED
 //#define OLED_SSD1306
 #define WIFI_NO_ETHERNET
 
@@ -51,3 +54,4 @@
 #define DRIP_ZONE_2        5
 #define DRIP_ZONE_3        6
 
+//#endif  //HW_CONFIG_H

@@ -7,6 +7,9 @@
   #define ETH_PHY_ADDR    0
 #endif
 
+extern WiFiCredentials[MAX_SSID_NUMBER] wifiCredentials;
+extern uint8_t ssid_index;
+
 uint8_t getNetworkStatus();
 IPAddress getNetworkLocalIp();
 bool getNetworkIsConnected();

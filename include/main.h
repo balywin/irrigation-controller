@@ -1,3 +1,5 @@
+#include <Arduino.h>
+#include <NTP.h>
 #include "hw_config.h"
 
 #define FILLING_MAX_MINUTES           20
@@ -37,8 +39,21 @@
 #define DRIP_ZONE_2        5
 #define DRIP_ZONE_3        6
 
+typedef struct IrrigationConfig {
+    uint16_t fillingMaxMinutes = FILLING_MAX_MINUTES;  // Maximum filling time in minutes
+    uint16_t grassMaxMinutes = GRASS_MAX_MINUTES;    // Maximum grass irrigation time in minutes
+    uint16_t dripMaxMinutes = DRIP_MAX_MINUTES;      // Maximum drip irrigation time in minutes
+    uint8_t leakageDetectorThreshold = LEAKAGE_DETECTOR_THRESHOLD; // Threshold for leakage detection
+    uint8_t levelFilteringSeconds = LEVEL_FILTERING_SECONDS; // Seconds for level filtering
+    uint8_t buttonFilteringMs = BUTTON_FILTERING_MS; // Milliseconds for button filtering
+    uint8_t grassPumpStartDelaySeconds = GRASS_PUMP_START_DELAY_SECONDS; // Delay before starting grass pump after opening main valve
+    int32_t highLevelPressure = HIGH_LEVEL_PRESSURE; // High level pressure threshold
+    int32_t lowLevelPressure = LOW_LEVEL_PRESSURE;   // Low level pressure threshold
+} IrrigationConfig;
 
 // ____________________________________________________________________________________________
+
+extern IrrigationConfig irrigationConfig;
 
 void ScanInputs();
 void setGrassMainValve(bool value);
@@ -54,6 +69,10 @@ void setOutput(uint8_t output_number, bool value);
 bool getOutput(uint8_t output_number);
 bool getInput(uint8_t input_number);
 void handleButtons(uint8_t filtered);
+void setup_NTP();
+void adjustRtc(NTP *ntp);
+void checkConnection();
+void applyConfig();
 
 // extern bool WT32_ETH01_eth_connected;
 // extern void WT32_ETH01_onEvent();
