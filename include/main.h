@@ -71,7 +71,6 @@ bool getInput(uint8_t input_number);
 void handleButtons(uint8_t filtered);
 void setup_NTP();
 void adjustRtc(NTP *ntp);
-void checkConnection();
 void applyConfig();
 
 // extern bool WT32_ETH01_eth_connected;

@@ -19,16 +19,6 @@
   #define I2C_SCL 5
 #endif
 
-#ifdef WIFI_NO_ETHERNET
-  // Replace with your network credentials
-#ifdef DEV_BOARD_OLED
-  #define AP_SSID "VivacarM"
-#else
-  #define AP_SSID "balywin"
-#endif
-  #define AP_PASSWORD "@Titi14#Papazov22%"
-#endif
-
 // ______________ PCF DIGITAL INPUTS ___________________________
 #define TANK_UPPER_SWITCH_INPUT_NUMBER 1        // NO Switch to Gnd, i.e. 0 when FULL  - to disable Well Pump
 #define TANK_LOWER_SWITCH_INPUT_NUMBER 2        // NO Switch to Gnd, i.e. 1 when EMPTY - to disable Gras & Drip Pumps and close both Main Valves

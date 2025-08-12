@@ -1,23 +1,17 @@
 #include "hw_config.h"
 #include "network.h"
+#include "i2c/oled.h"
 
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
   #include <WiFiClient.h>
   #include <WebServer.h>
-  #define MAX_SSID_NUMBER 4
-  typedef struct {
-    String ssid;
-    String password;
-  } WiFiCredentials;
 
   uint8_t ssid_index = 0;
-  WiFiCredentials[MAX_SSID_NUMBER] wifiCredentials = {
+  WiFiCredentials wifiCredentials[MAX_SSID_NUMBER] = {
     {"balywin", "@Titi14#Papazov22%"},
     {"VivacarM", "@Titi14#Papazov22%"},
-    {"Vivacar", "@Titi14#Papazov22%"},
-    {"SSID_3", "password_3"},
-    {"SSID_4", "password_4"}
+    {"Vivacar", "@Titi14#Papazov22%"}
   };
 #else
   #include <WebServer_WT32_ETH01.h>
@@ -39,19 +33,24 @@ int flagReadDi = 0;
 // Variable to store the HTTP request
 String header;
 uint32_t previousTime = 0;
+int8_t previousNetworkStatus = -1;
+// ----------- Connection status ---------------------
+bool previousConnected = false;
 
-unsigned long ota_progress_millis = 0;
+uint32_t ota_progress_millis = 0;
 
+#define WIFI_RECONNECT_COUNTER_THRESHOLD 1000UL
+uint32_t wifiReconnectCounter = WIFI_RECONNECT_COUNTER_THRESHOLD;
 // Define timeout time in milliseconds (example: 2000ms = 2s)
-long connectionTimeoutMs = 2000;
+uint32_t connectionTimeoutMs = 2000;
 
 short relayStates[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // state of relays
 
 void networkInit() {
   #ifdef WIFI_NO_ETHERNET
     Serial.print("Starting WiFi on " + String(ARDUINO_BOARD));
-    Serial.print(", looking for SSID '" + String(AP_SSID) + "'");
-    WiFi.begin(AP_SSID, AP_PASSWORD);
+    Serial.print(", looking for SSID '" + wifiCredentials[ssid_index].ssid + "' ... ");
+    WiFi.begin(wifiCredentials[ssid_index].ssid, wifiCredentials[ssid_index].password);
     WiFi.mode(WIFI_STA);
   #else
     Serial.print("\nStarting " + String(WEBSERVER_WT32_ETH01_VERSION) + " on " + String(ARDUINO_BOARD));
@@ -67,8 +66,8 @@ void networkInit() {
     // Static IP, leave without this line to get IP via DHCP
     // bool config(IPAddress local_ip, IPAddress gateway, IPAddress subnet, IPAddress dns1 = 0, IPAddress dns2 = 0);
     //  ETH.config(myIP, myGW, mySN, myDNS);oled.setCursor(0, 0);oled.println(F("Manual IP config."));oled.display();
-  #endif
     Serial.println(" ... started.");
+  #endif
 }
 
 uint8_t getNetworkStatus() {
@@ -93,6 +92,73 @@ bool getNetworkIsConnected() {
   #else
     return WT32_ETH01_isConnected();
   #endif
+}
+
+/* Returns true if just got connected, false if not */
+bool checkConnection() {
+  if (wifiReconnectCounter < WIFI_RECONNECT_COUNTER_THRESHOLD) {
+    wifiReconnectCounter++;
+    if (wifiReconnectCounter == WIFI_RECONNECT_COUNTER_THRESHOLD) {
+      networkInit();
+    }
+    return false;
+  }
+  bool now_connected = getNetworkIsConnected();
+  int8_t networkStatus = getNetworkStatus();
+  String s;
+  if (networkStatus != previousNetworkStatus) {
+#ifdef WIFI_NO_ETHERNET
+    switch (networkStatus) {
+      case 0: s = "WiFi Idle"; break;
+      case 1:
+        s = String(wifiCredentials[ssid_index].ssid) + " Not Found";
+        if (++ssid_index >= MAX_SSID_NUMBER) ssid_index = 0;
+        WiFi.disconnect(true);
+        wifiReconnectCounter = 0;
+        break;
+      case 2: s = "WiFi Scanned"; break;
+      case 3: s = "WiFi Connected"; break;
+      case 4: s = "WiFi ConnFailed"; break;
+      case 5: s = "Connection Lost"; break;
+      case 6: s = "Disconnected"; break;
+      default: s = ""; break;
+    }
+#else
+    if (networkStatus == 1) {
+      s = "Cable connected.";
+    } else {
+      s = "Cable disconnected.";
+    }
+#endif
+    if (s != "") {
+      Serial.println(s);
+      oled_show(1, s);
+    }
+    previousNetworkStatus = networkStatus;
+  }
+  if (now_connected != previousConnected) {
+    if (!now_connected) {
+#ifndef WIFI_NO_ETHERNET
+      if (networkStatus) {
+        s = "Waiting for DHCP...";
+        Serial.println(s);oled_show(1, s);
+      }
+#endif
+    } else {
+      s = String(ip2CharArray(getNetworkLocalIp()));
+      Serial.println(s);oled_show(1, s);
+
+      // start the web server on port 80
+      Serial.println("Starting Web server ...");
+      serverInit();
+      s = "Server started.";
+      Serial.println(s);
+      oled_show(2, s);
+    }
+    previousConnected = now_connected;
+    return now_connected;
+  }
+  return false;
 }
 
 void onOTAStart() {
