@@ -56,9 +56,6 @@ bool prevGrassIrrigationState = false;
 uint32_t grassPumpStartTime;
 
 uint8_t pcf_init_code;
-// ----------- Connection status ---------------------
-bool previousConnected = false;
-int8_t previousNetworkStatus = -1;
 uint8_t previousFilteredState;
 uint8_t i1State;
 uint8_t i2State;
@@ -207,7 +204,13 @@ void setup() {
 } 
 
 void loop() {
-  checkConnection();
+  if (checkConnection()) {       // If just got connected
+    setup_NTP();  // This also updates the time
+    Serial.println("NTP setup complete.");
+    if (ntp.epoch() > (24 * 60 * 60)) {
+      adjustRtc(&ntp);
+    }
+  }
   if (getNetworkIsConnected() && ntp.update()) {
     Serial.print("Time synced: " + String(ntp.formattedTime("%T")) + " , ");
     adjustRtc(&ntp);
@@ -350,63 +353,6 @@ void adjustRtc(NTP *ntp) {
     }
 //    rtc.adjust(ntp->epoch());
     timeSet = true;
-}
-
-void checkConnection() {
-  bool now_connected = getNetworkIsConnected();
-  int8_t networkStatus = getNetworkStatus();
-  String s;
-  if (networkStatus != previousNetworkStatus) {
-#ifdef WIFI_NO_ETHERNET
-  switch (networkStatus) {
-    case 0: s = "WiFi Idle"; break;
-    case 1: s = String(AP_SSID) + " Not Found"; break;
-    case 2: s = "WiFi Scanned"; break;
-    case 3: s = "WiFi Connected"; break;
-    case 4: s = "WiFi ConnFailed"; break;
-    case 5: s = "Connection Lost"; break;
-    case 6: s = "Disconnected"; break;
-    default: s = "Unknown WiFi Status"; break;
-  }
-#else
-    if (networkStatus == 1) {
-      s = "Cable connected.";
-    } else {
-      s = "Cable disconnected.";
-    }
-#endif
-    Serial.println(s);oled_show(1, s);
-    previousNetworkStatus = networkStatus;
-  }
-  if (now_connected != previousConnected) {
-    if (!now_connected) {
-#ifndef WIFI_NO_ETHERNET
-      if (networkStatus) {
-        s = "Waiting for DHCP...";
-        Serial.println(s);oled_show(1, s);
-      }
-#else
-      s = "";
-#endif
-    } else {
-      s = String(ip2CharArray(getNetworkLocalIp()));
-      Serial.println(s);oled_show(1, s);
-
-      setup_NTP();  // This also updates the time
-      Serial.println("NTP setup complete.");
-      if (ntp.epoch() > (24 * 60 * 60)) {
-        adjustRtc(&ntp);
-      }
-
-      // start the web server on port 80
-      Serial.println("Starting Web server ...");
-      serverInit();
-      s = "Server started.";
-    }
-    if (s != "") Serial.println(s);
-    oled_show(2, s);
-    previousConnected = now_connected;
-  }
 }
 
 void ScanInputs()
