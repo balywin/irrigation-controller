@@ -26,10 +26,8 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
 
         request->send(LittleFS, "/elefant_ota.html", String(), false, [&] (const String& var) {
           if (var == "FW_VERSION") {
-            Serial.println("# M: " + var);
             return _currentFWVersion;
           } else {
-            Serial.println("## : " + var);
             return var;
           }
         });

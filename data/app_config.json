@@ -1,5 +1,5 @@
 {
-  "device_name": "ESP32-Sensor",
-  "interval": 5000,
+  "device_name": "ESP32-Irrigator",
+  "masterValveDelaySeconds": 8,
   "enabled": true
 }

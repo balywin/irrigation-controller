@@ -1,8 +1,8 @@
 //#ifndef HW_CONFIG_H
 //#define HW_CONFIG_H
 
-#define DEV_BOARD_OLED
-//#define OLED_SSD1306
+//#define DEV_BOARD_OLED
+#define OLED_SSD1306
 #define WIFI_NO_ETHERNET
 
 #ifdef DEV_BOARD_OLED
