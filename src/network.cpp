@@ -1,3 +1,5 @@
+#include <LittleFS.h>
+
 #include "hw_config.h"
 #include "network.h"
 #include "i2c/oled.h"
@@ -5,7 +7,13 @@
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
   #include <WiFiClient.h>
+#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER  
+  #include <ESPAsyncWebServer.h>
+  #define ProperWebServer AsyncWebServer
+#else
   #include <WebServer.h>
+  #define ProperWebServer ebServer
+#endif  
 
   uint8_t ssid_index = 0;
   WiFiCredentials wifiCredentials[MAX_SSID_NUMBER] = {
@@ -16,7 +24,7 @@
 #else
   #include <WebServer_WT32_ETH01.h>
 #endif
-#include <ElegantOTA.h>
+#include <ElefantOTA.h>
 
 // If no DHCP used, select a static IP address, subnet mask and a gateway IP address according to your local network
 // IPAddress myIP(192, 168, 255, 201);
@@ -27,7 +35,7 @@
 // IPAddress myDNS(8, 8, 8, 8);
 
 // listen for incoming clients
-WebServer server(80);
+ProperWebServer server(80);
 int flagReadDi = 0;
 
 // Variable to store the HTTP request
@@ -185,13 +193,24 @@ void onOTAEnd(bool success) {
   // <Add your own code here>
 }
 
+String processor(const String& var) {
+  Serial.println("index: " + var);
+  return var;
+}
+
 void serverInit() {
 
+  // Route for root / web page
+#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/index.html", String(), false, processor);
+  });
+#else
   server.on("/", []() {
     server.send(200, "text/plain", "Hi! This is ElegantOTA Demo.");
   });
-
-  ElegantOTA.begin(&server);    // Start ElegantOTA
+#endif
+  ElegantOTA.begin(&server, "", "", FIRMWARE_VERSION);    // Start ElegantOTA
   // ElegantOTA callbacks
   ElegantOTA.onStart(onOTAStart);
   ElegantOTA.onProgress(onOTAProgress);
@@ -199,8 +218,10 @@ void serverInit() {
   server.begin();
 }
 
-void serverLoop() {
+void networkLoop() {
+#ifndef ELEGANTOTA_USE_ASYNC_WEBSERVER  
   server.handleClient();
+#endif  
   ElegantOTA.loop();
 }
 
