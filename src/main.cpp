@@ -269,7 +269,7 @@ void loop() {
     setGrassMainValve(grassIrrigationState);
   }
 #endif
-  serverLoop();
+  networkLoop();
 }
 
 void setOutput(uint8_t output_number, bool value) {

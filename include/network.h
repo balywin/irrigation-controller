@@ -20,6 +20,6 @@ bool getNetworkIsConnected();
 void networkInit();
 void serverInit();
 void httpHandler();
-void serverLoop();
+void networkLoop();
 char* ip2CharArray(IPAddress ip);
 bool checkConnection();
