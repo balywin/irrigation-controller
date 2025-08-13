@@ -1,5 +1,13 @@
 {
-  "device_name": "ESP32-Sensor",
-  "interval": 5000,
-  "enabled": true
+  "device_name": "ESP32-Irrigator",
+  "enabled": true,
+
+  "fillingMaxMinutes": 20,
+  "grassMaxMinutes": 30,
+  "dripMaxMinutes": 240,
+  "leakageDetectorThreshold": 3,
+  "levelFilteringSeconds": 12,
+  "grassPumpStartDelaySeconds": 8,
+  "highLevelPressure": 120000,
+  "lowLevelPressure": -200000
 }

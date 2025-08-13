@@ -1,7 +1,6 @@
-#include <Arduino.h>
-#include "file_config.h"
-#include "hw_config.h"
 #include "main.h"
+#include "file_utils.h"
+#include "hw_config.h"
 #include "board_info.h"
 
 #define DEBUG_ETHERNET_WEBSERVER_PORT       Serial
@@ -76,6 +75,22 @@ bool timeSet = false;
 bool rtcReady = false;
 bool timeBlink = false;
 
+JsonDocument config;
+JsonDocument schedule;
+
+void applyJsonConfig(const JsonDocument& doc) {
+    irrigationConfig.fillingMaxMinutes = doc["filling_max_minutes"] | FILLING_MAX_MINUTES;
+    irrigationConfig.grassMaxMinutes   = doc["grass_max_minutes"]   | GRASS_MAX_MINUTES;
+    irrigationConfig.dripMaxMinutes    = doc["drip_max_minutes"]    | DRIP_MAX_MINUTES;
+    irrigationConfig.leakageDetectorThreshold = doc["leakage_detector_threshold"] | LEAKAGE_DETECTOR_THRESHOLD;
+    irrigationConfig.levelFilteringSeconds = doc["level_filtering_seconds"] | LEVEL_FILTERING_SECONDS;
+    irrigationConfig.buttonFilteringMs = doc["button_filtering_ms"] | BUTTON_FILTERING_MS;
+    irrigationConfig.grassPumpStartDelaySeconds = doc["grass_pump_start_delay_seconds"] |  GRASS_PUMP_START_DELAY_SECONDS;
+    irrigationConfig.highLevelPressure = doc["high_level_pressure"] | HIGH_LEVEL_PRESSURE;
+    irrigationConfig.lowLevelPressure = doc["low_level_pressure"] | LOW_LEVEL_PRESSURE;
+    applyConfig();
+}
+
 void applyConfig() {
   fillingMaxMs = irrigationConfig.fillingMaxMinutes * 60 * 1000UL; // 20 minutes
   grassMaxMs   = irrigationConfig.grassMaxMinutes   * 60 * 1000UL; // 30 minutes
@@ -83,8 +98,8 @@ void applyConfig() {
 
   levelFilteringCounterThreshold = (irrigationConfig.levelFilteringSeconds * 1000 / INPUT1_SCAN_PERIOD_MS);
   buttonFilteringCounterThreshold = (irrigationConfig.buttonFilteringMs / INPUT1_SCAN_PERIOD_MS);
-  filterState.threshold[TANK_UPPER_SWITCH_INPUT_NUMBER - 1] = levelFilteringCounterThreshold;
-  filterState.threshold[TANK_LOWER_SWITCH_INPUT_NUMBER - 1] = levelFilteringCounterThreshold;
+  filterState.threshold[TANK_UPPER_LIMIT_SWITCH - 1] = levelFilteringCounterThreshold;
+  filterState.threshold[TANK_LOWER_LIMIT_SWITCH - 1] = levelFilteringCounterThreshold;
   filterState.threshold[BUTTON_FILLING - 1] = buttonFilteringCounterThreshold;
   filterState.threshold[BUTTON_GRASS - 1] = buttonFilteringCounterThreshold;
   filterState.threshold[BUTTON_DRIP - 1] = buttonFilteringCounterThreshold;
@@ -132,7 +147,7 @@ void showStates() {
   //Serial.println(states);
   oled_show(7, states, 1);
 
-  uint32_t tusCnt = filterState.counter[TANK_UPPER_SWITCH_INPUT_NUMBER-1];
+  uint32_t tusCnt = filterState.counter[TANK_UPPER_LIMIT_SWITCH-1];
 //  sprintf(pumpStates, "%c%c%c", getPumpWell() ? 'F' : ' ', getPumpGrass ? 'G' : ' ', getPumpDrip ? 'D' : ' ');
   sprintf(pumpStates, "%c%c%c", fillingRequested ? 'F' : ' ', grassIrrigationRequested ? 'G' : ' ', dripIrrigationRequested ? 'D' : ' ');
   if (tusCnt) {
@@ -145,7 +160,7 @@ void showStates() {
   }
   oldTusCnt = tusCnt;
 
-  uint32_t tlsCnt = filterState.counter[TANK_LOWER_SWITCH_INPUT_NUMBER-1];
+  uint32_t tlsCnt = filterState.counter[TANK_LOWER_LIMIT_SWITCH-1];
   if (tlsCnt != oldTlsCnt) {
     if (tlsCnt) {
       sprintf(states, "%s L%.1f ", pumpStates, tlsCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
@@ -170,7 +185,9 @@ void setup() {
 
   printBoardInfo();
   initFs();
-  loadConfig();
+  loadFile(config, "/app_config.json");
+  applyJsonConfig(config);
+  loadFile(schedule, "/schedule.json");
   // Set I2C pins
   Wire.setPins(I2C_SDA, I2C_SCL);
 
@@ -314,27 +331,27 @@ void setDripMainValve(bool value) {
 }
 
 void setPumpWell(bool value) {
-  setOutput(PUMP_WELL_OUTPUT_NUMBER, !value);
+  setOutput(PUMP_WELL, !value);
 }
 
 void setPumpGrass(bool value) {
-  setOutput(PUMP_GRASS_OUTPUT_NUMBER, !value);
+  setOutput(PUMP_GRASS, !value);
 }
 
 void setPumpDrip(bool value) {
-  setOutput(PUMP_DRIP_OUTPUT_NUMBER, !value);
+  setOutput(PUMP_DRIP, !value);
 }
 
 bool getPumpWell() {
-  return !getOutput(PUMP_WELL_OUTPUT_NUMBER);
+  return !getOutput(PUMP_WELL);
 }
 
 bool getPumpGrass() {
-  return !getOutput(PUMP_GRASS_OUTPUT_NUMBER);
+  return !getOutput(PUMP_GRASS);
 }
 
 bool getPumpDrip() {
-  return !getOutput(PUMP_DRIP_OUTPUT_NUMBER);
+  return !getOutput(PUMP_DRIP);
 }
 
 void setup_NTP() {
@@ -364,8 +381,8 @@ void ScanInputs()
 
   handleButtons(filtered);
 
-  drainingDisabled = filtered & (1 << (TANK_LOWER_SWITCH_INPUT_NUMBER - 1));
-  fillingEnabled   = filtered & (1 << (TANK_UPPER_SWITCH_INPUT_NUMBER - 1));
+  drainingDisabled = filtered & (1 << (TANK_LOWER_LIMIT_SWITCH - 1));
+  fillingEnabled   = filtered & (1 << (TANK_UPPER_LIMIT_SWITCH - 1));
   
   if (fillingEnabled && (fillingEnabled != prevFillingEnabled)) {
     leakageDetectorCounter++;
@@ -385,7 +402,7 @@ void handleButtons(uint8_t filtered) {
     switch (butState) {
       case 0x04:    // Filling button
         fillingRequested = !fillingRequested;
-        filterState.last_state |= 1 << (TANK_UPPER_SWITCH_INPUT_NUMBER - 1); 
+        filterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
         leakageDetectorCounter = 0;
         break;
       case 0x08:    // Grass button

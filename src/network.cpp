@@ -7,13 +7,6 @@
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
   #include <WiFiClient.h>
-#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER  
-  #include <ESPAsyncWebServer.h>
-  #define ProperWebServer AsyncWebServer
-#else
-  #include <WebServer.h>
-  #define ProperWebServer ebServer
-#endif  
 
   uint8_t ssid_index = 0;
   WiFiCredentials wifiCredentials[MAX_SSID_NUMBER] = {
@@ -24,6 +17,13 @@
 #else
   #include <WebServer_WT32_ETH01.h>
 #endif
+#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER  
+  #include <ESPAsyncWebServer.h>
+  #define ProperWebServer AsyncWebServer
+#else
+  #include <WebServer.h>
+  #define ProperWebServer WebServer
+#endif  
 #include <ElefantOTA.h>
 
 // If no DHCP used, select a static IP address, subnet mask and a gateway IP address according to your local network

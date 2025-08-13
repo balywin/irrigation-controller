@@ -1,8 +1,7 @@
-#include "FS.h"
 #include <Arduino.h>
+#include <FS.h>
 #include <LittleFS.h>
-#include <ArduinoJson.h>
-#include "file_config.h"
+#include "file_utils.h"
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
@@ -29,26 +28,23 @@ void printTestValues(const JsonDocument& doc) {
   Serial.printf("  - Enabled: %s\n", enabled ? "true" : "false");
 }
 
-bool loadConfig() {
-  File file = LittleFS.open("/app_config.json", "r");
+bool loadFile(JsonDocument& doc, String fileName) {
+  File file = LittleFS.open(fileName, "r");
   if (!file || file.isDirectory()) {
-    Serial.println("Failed to open config file!");
+    Serial.println("Failed to open file " + fileName);
     return false;
   }
-  // Allocate a JSON document
-  JsonDocument doc;
-
   // Parse the file
   DeserializationError error = deserializeJson(doc, file);
   if (error) {
-    Serial.print("Failed to parse JSON: ");
+    Serial.print("Failed to parse JSON from " + fileName);
     Serial.println(error.f_str());
     return false;
   }
+  file.close();
 
   printTestValues(doc);
+  Serial.println(fileName + " loaded from the file system.");
 
-  Serial.println("Config loaded from file system.");
-  file.close();
   return true;
 }

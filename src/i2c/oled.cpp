@@ -1,12 +1,6 @@
 #include "i2c/oled.h"
 
-#ifdef OLED_SSD1306
-  Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-  #define OLED_WHITE SSD1306_WHITE
-#else
-  Adafruit_SH1106G oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-  #define OLED_WHITE SH110X_WHITE
-#endif
+Oled_Class oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void init_oled() {
   Serial.print("Starting OLED ... ");
