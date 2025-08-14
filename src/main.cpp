@@ -19,9 +19,6 @@
 #include "i2c/oled.h"
 #include "network.h"
 
-#define HX_SCK_PIN 32
-#define HX_DAT_PIN 33
-
 RTC_DS3231 rtc;
 WiFiUDP ntpUDP;
 NTP ntp(ntpUDP);
@@ -29,10 +26,6 @@ NTP ntp(ntpUDP);
 HX710B pressureSensor(HX_SCK_PIN, HX_DAT_PIN);
 
 IrrigationConfig irrigationConfig;
-
-#define TIME_UPDATE_PERIOD_MS  1000UL
-#define STATUS_SHOW_PERIOD_MS   200UL
-#define INPUT1_SCAN_PERIOD_MS     5UL
 
 uint32_t fillingMaxMs;
 uint32_t grassMaxMs;
@@ -58,6 +51,8 @@ uint8_t pcf_init_code;
 uint8_t previousFilteredState;
 uint8_t i1State;
 uint8_t i2State;
+uint8_t i1Filtered;
+uint8_t i2Filtered;
 // -------------- Pump related -----------------------
 uint32_t pressureRaw = 0;
 bool fillingEnabled = false;
@@ -68,7 +63,8 @@ bool fillingRequested = false;
 bool grassIrrigationRequested = false;
 bool dripIrrigationRequested = false;
 
-FilterState filterState = {0};
+FilterState i1FilterState = {0};
+FilterState i2FilterState = {0};
 uint8_t lastButState = BUTTON_MASK;
 
 bool timeSet = false;
@@ -96,13 +92,13 @@ void applyConfig() {
   grassMaxMs   = irrigationConfig.grassMaxMinutes   * 60 * 1000UL; // 30 minutes
   dripMaxMs    = irrigationConfig.dripMaxMinutes    * 60 * 1000UL;  // 120 minutes
 
-  levelFilteringCounterThreshold = (irrigationConfig.levelFilteringSeconds * 1000 / INPUT1_SCAN_PERIOD_MS);
-  buttonFilteringCounterThreshold = (irrigationConfig.buttonFilteringMs / INPUT1_SCAN_PERIOD_MS);
-  filterState.threshold[TANK_UPPER_LIMIT_SWITCH - 1] = levelFilteringCounterThreshold;
-  filterState.threshold[TANK_LOWER_LIMIT_SWITCH - 1] = levelFilteringCounterThreshold;
-  filterState.threshold[BUTTON_FILLING - 1] = buttonFilteringCounterThreshold;
-  filterState.threshold[BUTTON_GRASS - 1] = buttonFilteringCounterThreshold;
-  filterState.threshold[BUTTON_DRIP - 1] = buttonFilteringCounterThreshold;
+  levelFilteringCounterThreshold = (irrigationConfig.levelFilteringSeconds * 1000 / INPUTS_SCAN_PERIOD_MS);
+  buttonFilteringCounterThreshold = (irrigationConfig.buttonFilteringMs / INPUTS_SCAN_PERIOD_MS);
+  i1FilterState.threshold[TANK_UPPER_LIMIT_SWITCH - 1] = levelFilteringCounterThreshold;
+  i1FilterState.threshold[TANK_LOWER_LIMIT_SWITCH - 1] = levelFilteringCounterThreshold;
+  i1FilterState.threshold[BUTTON_FILLING - 1] = buttonFilteringCounterThreshold;
+  i1FilterState.threshold[BUTTON_GRASS - 1] = buttonFilteringCounterThreshold;
+  i1FilterState.threshold[BUTTON_DRIP - 1] = buttonFilteringCounterThreshold;
 
   Serial.print("Level threshold: ");Serial.println(levelFilteringCounterThreshold);
   Serial.print("Button threshold: ");Serial.println(buttonFilteringCounterThreshold);
@@ -147,12 +143,12 @@ void showStates() {
   //Serial.println(states);
   oled_show(7, states, 1);
 
-  uint32_t tusCnt = filterState.counter[TANK_UPPER_LIMIT_SWITCH-1];
+  uint32_t tusCnt = i1FilterState.counter[TANK_UPPER_LIMIT_SWITCH-1];
 //  sprintf(pumpStates, "%c%c%c", getPumpWell() ? 'F' : ' ', getPumpGrass ? 'G' : ' ', getPumpDrip ? 'D' : ' ');
   sprintf(pumpStates, "%c%c%c", fillingRequested ? 'F' : ' ', grassIrrigationRequested ? 'G' : ' ', dripIrrigationRequested ? 'D' : ' ');
   if (tusCnt) {
     if (tusCnt != oldTusCnt) {
-      sprintf(states, "%s U%.1f ", pumpStates, tusCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
+      sprintf(states, "%s U%.1f ", pumpStates, tusCnt*INPUTS_SCAN_PERIOD_MS/1000.0);
       oled_show(4, states, 2);
     }
   } else {
@@ -160,17 +156,17 @@ void showStates() {
   }
   oldTusCnt = tusCnt;
 
-  uint32_t tlsCnt = filterState.counter[TANK_LOWER_LIMIT_SWITCH-1];
+  uint32_t tlsCnt = i1FilterState.counter[TANK_LOWER_LIMIT_SWITCH-1];
   if (tlsCnt != oldTlsCnt) {
     if (tlsCnt) {
-      sprintf(states, "%s L%.1f ", pumpStates, tlsCnt*INPUT1_SCAN_PERIOD_MS/1000.0);
+      sprintf(states, "%s L%.1f ", pumpStates, tlsCnt*INPUTS_SCAN_PERIOD_MS/1000.0);
       oled_show(4, states, 2);
     }
     oldTlsCnt = tlsCnt;
   }
 
-  if (filterState.last_state != previousFilteredState) {
-    previousFilteredState = filterState.last_state;
+  if (i1FilterState.last_state != previousFilteredState) {
+    previousFilteredState = i1FilterState.last_state;
     sprintf(tm, "%02u:%02u:%02u: ", rtc.now().hour(), rtc.now().minute(), rtc.now().second());
     Serial.print(tm);
     Serial.println(states);
@@ -255,7 +251,7 @@ void loop() {
   }
 #ifndef DEV_BOARD_OLED
   currentTime = millis();
-  if ((currentTime - lastTimeScanButtons) >= INPUT1_SCAN_PERIOD_MS) {
+  if ((currentTime - lastTimeScanButtons) >= INPUTS_SCAN_PERIOD_MS) {
     ScanInputs();
     lastTimeScanButtons = currentTime;
   }
@@ -322,38 +318,6 @@ bool getInput(uint8_t input_number) {
     return pcf8574_I2.digitalRead(input_number - 9, true) ? true : false;
 }
 
-void setGrassMainValve(bool value) {
-  setOutput(MAIN_VALVE_GRASS, !value);
-}
-
-void setDripMainValve(bool value) {
-  setOutput(MAIN_VALVE_DRIP, !value);
-}
-
-void setPumpWell(bool value) {
-  setOutput(PUMP_WELL, !value);
-}
-
-void setPumpGrass(bool value) {
-  setOutput(PUMP_GRASS, !value);
-}
-
-void setPumpDrip(bool value) {
-  setOutput(PUMP_DRIP, !value);
-}
-
-bool getPumpWell() {
-  return !getOutput(PUMP_WELL);
-}
-
-bool getPumpGrass() {
-  return !getOutput(PUMP_GRASS);
-}
-
-bool getPumpDrip() {
-  return !getOutput(PUMP_DRIP);
-}
-
 void setup_NTP() {
   ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
   ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)
@@ -372,17 +336,26 @@ void adjustRtc(NTP *ntp) {
     timeSet = true;
 }
 
+bool getFilteredInput(uint8_t inputNumber) {
+  if ((inputNumber < 1) || (inputNumber > 16)) return false;
+  return (inputNumber < 9 ? i1Filtered : i2Filtered) & (1 << (inputNumber - 1));
+}
+
 void ScanInputs()
 {
   char line[24];
   i1State = pcf8574_I1.digitalReadAll();
   i2State = pcf8574_I2.digitalReadAll();
-  uint8_t filtered = filter_inputs(i1State, &filterState);
+  i1Filtered = filter_inputs(i1State, &i1FilterState);
+  i2Filtered = filter_inputs(i2State, &i2FilterState);  // prepared, although still not used
 
-  handleButtons(filtered);
+  handleButtons(i1Filtered);
+  handleLevelSwitches(i1Filtered);
+}
 
-  drainingDisabled = filtered & (1 << (TANK_LOWER_LIMIT_SWITCH - 1));
-  fillingEnabled   = filtered & (1 << (TANK_UPPER_LIMIT_SWITCH - 1));
+void handleLevelSwitches(uint8_t filtered) {  
+  drainingDisabled = getFilteredInput(TANK_LOWER_LIMIT_SWITCH);
+  fillingEnabled   = getFilteredInput(TANK_UPPER_LIMIT_SWITCH);
   
   if (fillingEnabled && (fillingEnabled != prevFillingEnabled)) {
     leakageDetectorCounter++;
@@ -402,7 +375,7 @@ void handleButtons(uint8_t filtered) {
     switch (butState) {
       case 0x04:    // Filling button
         fillingRequested = !fillingRequested;
-        filterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
+        //i1FilterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
         leakageDetectorCounter = 0;
         break;
       case 0x08:    // Grass button

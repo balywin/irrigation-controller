@@ -7,14 +7,6 @@
         "durationMinutes": 30,
         "daysOfWeek": [ 1, 2, 3, 4, 5, 6, 7, 135, 246, 147, 159 ],
         "startTimes": ["7:00","19:00"],
-        "sunriseSchedule": {
-            "enabled": true,
-            "sunriseOffsetMinutes": 10
-        },
-        "sunsetSchedule": {
-            "enabled": true,
-            "sunsetOffsetMinutes": 10
-        },
         "suspendAboveTemp": 35
     },
     {
@@ -25,6 +17,14 @@
         "durationMinutes": 30,
         "daysOfWeek": [ 1, 2, 3, 4, 5, 6, 7, 135, 246, 147, 159 ],
         "startTimes": ["7:00","19:00"],
+        "sunriseSchedule": {
+            "enabled": true,
+            "sunriseOffsetMinutes": 10
+        },
+        "sunsetSchedule": {
+            "enabled": true,
+            "sunsetOffsetMinutes": 10
+        },
         "suspendAboveTemp": 35
     }
 ]
