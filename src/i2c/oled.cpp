@@ -25,13 +25,32 @@ void init_oled() {
 }
 
 void oled_clear_line(uint8_t line, uint8_t size) {
-  oled.setTextSize(size);
-  oled.fillRect(0, 8*line, SCREEN_WIDTH, 8*size, 0);
+  oled_clear_from(line, size);
 }
 
-void oled_show(uint8_t line, String text, uint8_t size) {
-  oled_clear_line(line, size);
-  oled.setCursor(0, 8*line);oled.println(text);oled.display();
+void oled_clear_keep_last(uint8_t line, uint8_t size, uint8_t last) {
+  oled.fillRect(0, 8 * line, 6 * size * (SCREEN_WIDTH / 6 - last), 8 * size, 0);
+}
+
+void oled_clear_from(uint8_t line, uint8_t size, uint8_t from, uint8_t len) {
+  oled.setTextSize(size);
+  uint16_t width = 6 * size * len;
+  if (width > SCREEN_WIDTH - 6 * size * from) width = SCREEN_WIDTH - 6 * size * from;
+  oled.fillRect(6 * size * from, 8 * line, width, 8 * size, 0);
+}
+
+void oled_show(uint8_t line, String text, uint8_t size, bool clear) {
+  if (clear) oled_clear_line(line, size);
+  oled_show_at(0, line, text, size, false);
+}
+
+void oled_show_at(uint8_t pos, uint8_t line, String text, uint8_t size, bool clear) {
+  oled.setTextSize(size);
+  if (clear)
+    oled_clear_from(line, size, pos, text.length());
+  oled.setCursor(6 * size * pos, 8 * line);
+  oled.println(text);
+  oled.display();
 }
 
 void test_oled() {

@@ -15,19 +15,6 @@ bool initFs() {
   return res;
 }
 
-void printTestValues(const JsonDocument& doc) {
-  // Read values
-  const char* deviceName = doc["device_name"];
-  int interval = doc["interval"];
-  bool enabled = doc["enabled"];
-
-  // Print values
-  Serial.println("Config loaded:");
-  Serial.printf("  - Device Name: %s\n", deviceName);
-  Serial.printf("  - Interval: %d ms\n", interval);
-  Serial.printf("  - Enabled: %s\n", enabled ? "true" : "false");
-}
-
 bool loadFile(JsonDocument& doc, String fileName) {
   File file = LittleFS.open(fileName, "r");
   if (!file || file.isDirectory()) {
@@ -43,7 +30,6 @@ bool loadFile(JsonDocument& doc, String fileName) {
   }
   file.close();
 
-  printTestValues(doc);
   Serial.println(fileName + " loaded from the file system.");
 
   return true;

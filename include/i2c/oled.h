@@ -21,6 +21,9 @@
 extern Oled_Class oled;
 
 void init_oled();
-void oled_show(uint8_t line, String text, uint8_t size = 1);
+void oled_show(uint8_t line, String text, uint8_t size = 1, bool clear = true);
+void oled_show_at(uint8_t pos, uint8_t line, String text, uint8_t size = 1, bool clear = true);
 void oled_clear_line(uint8_t line, uint8_t size = 1);
+void oled_clear_from(uint8_t line, uint8_t size = 1, uint8_t from = 0, uint8_t len = SCREEN_WIDTH / 6);
+void oled_clear_keep_last(uint8_t line, uint8_t size, uint8_t last);
 void test_oled();
