@@ -2,6 +2,8 @@
   "device_name": "ESP32-Irrigator",
   "enabled": true,
 
+  "number_of_grass_zones": 5,
+  "number_of_drip_zones": 3,
   "fillingMaxMinutes": 20,
   "grassMaxMinutes": 30,
   "dripMaxMinutes": 240,

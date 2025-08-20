@@ -10,7 +10,6 @@ PCF8574 pcf8574_I2(0x21, I2C_SDA, I2C_SCL);
 
 void slow_pcf_test();
 
-
 bool config_pcf(PCF8574 *pcf, uint8_t mode, uint8_t value = HIGH) {
   Serial.print("PCF8574 init... ");
   for (uint8_t i = 0; i <= 7; i++) {
@@ -60,24 +59,23 @@ void test_pcf() {
   Serial.println();
 }
 
-// Call this function periodically with the current port state (e.g., every 1ms)
-uint8_t filter_inputs(uint8_t raw_input, FilterState *state) {
-  for (uint8_t i = 0; i < 8; i++) {
+// Call this function periodically with the current port state (e.g., every 5ms)
+uint16_t filter_inputs(uint16_t raw_input, FilterState *state) {
+  for (uint8_t i = 0; i < 16; i++) {
     bool new_bit = (raw_input >> i) & 1;
     bool last_bit = (state->last_state >> i) & 1;
 
     if (new_bit == last_bit) {
-      state->counter[i] = 0;  // reset counter since value matches output
+      state->counter[i] = millis();  // reset counter since value matches output
     } else {
-      if (state->counter[i] >= state->threshold[i]) {
+      if (millis() - state->counter[i] >= state->threshold[i]) {
         // Accept the new value after <threshold> consecutive reads
         if (new_bit)
           state->last_state |= (1 << i);
         else
           state->last_state &= ~(1 << i);
-        state->counter[i] = 0;
-      } else 
-        state->counter[i]++;
+        state->counter[i] = millis();  // reset counter after accepting the new value
+      }
     }
   }
   return state->last_state;
