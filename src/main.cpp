@@ -66,6 +66,7 @@ bool level_1 = false;
 bool level_2 = false;
 bool level_3 = false;
 bool level_4 = false;
+char prevLevel = '?';
 
 #ifdef LEVEL_SIMULATOR
   uint8_t levelCounter = 0;
@@ -180,11 +181,10 @@ void showStates() {
 
   uint32_t tusCnt = (millis() - filterState.counter[TANK_UPPER_LIMIT1_SWITCH - 1])/100;
   uint32_t tlsCnt = (millis() - filterState.counter[TANK_LOWER_LIMIT_SWITCH - 1])/100;
-//  sprintf(pumpStates, "%c%c%c", getPumpWell() ? 'F' : ' ', getPumpGrass ? 'G' : ' ', getPumpDrip ? 'D' : ' ');
   sprintf(pumpStates, "%c  %s%c  ",
-    fillingRequested ? 'F' : ' ',
-    grassIrrigationRequested ? "G" + String(grass_zone_index) : "   ", 
-    dripIrrigationRequested ? 'D' : ' ');
+          fillingRequested ? 'F' : ' ',
+          grassIrrigationRequested ? "G" + String(grass_zone_index) : "   ", 
+          dripIrrigationRequested ? 'D' : ' ');
   if (tusCnt > 1) {
     if (tusCnt != oldTusCnt) {
       pumpStates[3] = 0;
@@ -210,11 +210,13 @@ void showStates() {
     Serial.println(previousFilteredState, HEX);
   }
 
-  sprintf(states, "%u", level_4 ? 4 : level_3 ? 3 : level_2 ? 2 : level_1 ? 1 : 0);
+  char level = level_4 ? '4' : level_3 ? '3' : level_2 ? '2' : level_1 ? '1' : '0';
   oled.fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0); oled.drawBitmap(6 * 2 * 9, 8 * 3, bidon, 16, 24, OLED_WHITE);
-  oled.setCursor(6 * 2 * 9 + 3, 8 * 3 + 5); oled.setTextSize(2); oled.println(states); oled.display();
-  //Serial.print("Tank Level: "); Serial.println(states);
-
+  oled.setCursor(6 * 2 * 9 + 3, 8 * 3 + 5); oled.setTextSize(2); oled.print(level); oled.display();
+  if (prevLevel != level) {
+    Serial.print("Tank Level: "); Serial.println(level);
+    prevLevel = level;
+  }
 }
 
 void printTestValues(const JsonDocument& doc) {
@@ -430,6 +432,11 @@ void adjustRtc(NTP *ntp) {
     timeSet = true;
 }
 
+bool getFilteredInput(uint8_t inputNumber) {
+  if ((inputNumber < 1) || (inputNumber > 16)) return false;
+  return iFiltered & (1 << (inputNumber - 1));
+}
+
 void showDiagInfo() {
   char ds[24];
   if (diag != prevDiag) {
@@ -439,14 +446,17 @@ void showDiagInfo() {
     if (diag == NO_DEFECT) {
       Serial.println("No defects detected");
     }
-    if (diag & L2_DEFECT) {
-      Serial.println(" **** L2 defect detected ****. Irrigation disabled.");
+    if (diag & L1_DEFECT) {
+      Serial.println(" **** L1 defect detected ****. Irrigation disabled.");
     }
-    if (diag & L3_DEFECT) {
-      Serial.println(" **** L3 defect detected ****. Irrigation disabled.");
+    if (diag & L12_DEFECT) {
+      Serial.println(" **** L12 defect detected ****. Irrigation disabled.");
     }
-    if (diag & L4_DEFECT) {
-      Serial.println(" **** L4 defect detected ****. Filling disabled.");
+    if (diag & L123_DEFECT) {
+      Serial.println(" **** L123 defect detected ****. Filling disabled.");
+    }
+    if (diag & TANK_UPPER_LIMIT_DEFECT) {
+      Serial.println(" **** Tank upper limit defect detected ****. Filling disabled.");
     }
     if (diag & LEAK_DEFECT) {
       Serial.println(" **** Leakage detected ****. Automatic filling cancelled.");
@@ -460,18 +470,21 @@ void checkForDefects() {
     drainingDisabled = true;
     grassIrrigationRequested = false;
     dripIrrigationRequested = false;
-    diag |= L2_DEFECT;
-  }
-  if (level_3 && (!level_2 || !level_1)) {
+    diag |= L1_DEFECT;
+  } else if (level_3 && (!level_2 || !level_1)) {
     drainingDisabled = true;
     grassIrrigationRequested = false;
     dripIrrigationRequested = false;
-    diag |= L3_DEFECT;
-  }
-  if (level_4 && (!level_3 || !level_2 || !level_1)) {
+    diag |= L12_DEFECT;
+  } else if (level_4 && (!level_3 || !level_2 || !level_1)) {
     fillingEnabled = false;
     fillingRequested = false;
-    diag |= L4_DEFECT;
+    diag |= L123_DEFECT;
+  }
+  if (getFilteredInput(TANK_UPPER_LIMIT1_SWITCH) && !getFilteredInput(TANK_UPPER_LIMIT2_SWITCH)) {
+    fillingEnabled = false;
+    fillingRequested = false;
+    diag |= TANK_UPPER_LIMIT_DEFECT;
   }
   if (fillingEnabled && (fillingEnabled != prevFillingEnabled)) {
     leakageDetectorCounter++;
@@ -483,14 +496,8 @@ void checkForDefects() {
   prevFillingEnabled = fillingEnabled;
 }
 
-bool getFilteredInput(uint8_t inputNumber) {
-  if ((inputNumber < 1) || (inputNumber > 16)) return false;
-  return iFiltered & (1 << (inputNumber - 1));
-}
-
 void ScanPCFInputs()
 {
-
   char line[24];
   if (!pcf_init_code) {
     iState = pcf8574_I1.digitalReadAll() | (pcf8574_I2.digitalReadAll() << 8);

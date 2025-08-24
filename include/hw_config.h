@@ -62,11 +62,12 @@
 #define MAIN_VALVE_GRASS   16        // Main valve of grass system - from Gardena 4100
 
 // Diagnostic flags
-#define NO_DEFECT          0
-#define L2_DEFECT          0x01
-#define L3_DEFECT          0x02
-#define L4_DEFECT          0x04
-#define LEAK_DEFECT        0x08
-#define PCF_INIT_FAILED    0x10 // PCF8574 init failed
+#define NO_DEFECT                   0
+#define L1_DEFECT                   0x01
+#define L12_DEFECT                  0x02
+#define L123_DEFECT                 0x04
+#define TANK_UPPER_LIMIT_DEFECT     0x08
+#define LEAK_DEFECT                 0x10
+#define PCF_INIT_FAILED             0x20 // PCF8574 init failed
 
 //#endif  //HW_CONFIG_H
