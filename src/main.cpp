@@ -25,7 +25,7 @@ NTP ntp(ntpUDP);
 
 HX710B pressureSensor(HX_SCK_PIN, HX_DAT_PIN);
 
-IrrigationConfig irrigationConfig;
+ControllerConfig controllerConfig;
 
 uint32_t fillingMaxMs;
 uint32_t grassMaxMs;
@@ -42,6 +42,7 @@ unsigned long lastTimeShowInputs  = 0;
 unsigned long lastTimeInputsScanned = 0;
 unsigned long lastTimeGrassIrrigationRequested = 0;
 unsigned long lastTimeDripIrrigationRequested = 0;
+unsigned long lastTimeGrassZoneSwitched = 0;
 uint32_t oldTusCnt;
 uint32_t oldTlsCnt;
 bool prevGrassIrrigationState = false;
@@ -85,55 +86,53 @@ bool timeSet = false;
 bool rtcReady = false;
 bool timeBlink = false;
 
-JsonDocument config;
-JsonDocument schedule;
+JsonDocument appConfigJson;
+JsonDocument scheduleJson;
+JsonDocument manualControlJson;
 
-uint8_t grass_zone_index;
+int8_t grass_zone_index;
 uint8_t grassZones[MAX_NUMBER_OF_GRASS_ZONES];
 uint8_t dripZones[MAX_NUMBER_OF_DRIP_ZONES];
 
-void applyJsonConfig(const JsonDocument& doc) {
-  irrigationConfig.numberOfGrassZones = doc["number_of_grass_zones"] | MAX_NUMBER_OF_GRASS_ZONES;
-  irrigationConfig.numberOfDripZones = doc["number_of_drip_zones"] | MAX_NUMBER_OF_DRIP_ZONES;
-  irrigationConfig.fillingMaxMinutes = doc["filling_max_minutes"] | FILLING_MAX_MINUTES;
-  irrigationConfig.grassMaxMinutes   = doc["grass_max_minutes"]   | GRASS_MAX_MINUTES;
-  irrigationConfig.dripMaxMinutes    = doc["drip_max_minutes"]    | DRIP_MAX_MINUTES;
-  irrigationConfig.leakageDetectorThreshold = doc["leakage_detector_threshold"] | LEAKAGE_DETECTOR_THRESHOLD;
-  irrigationConfig.levelFilteringSeconds = doc["level_filtering_seconds"] | LEVEL_FILTERING_SECONDS;
-  irrigationConfig.buttonFilteringMs = doc["button_filtering_ms"] | BUTTON_FILTERING_MS;
-  irrigationConfig.grassPumpStartDelaySeconds = doc["grass_pump_start_delay_seconds"] |  GRASS_PUMP_START_DELAY_SECONDS;
-  irrigationConfig.highLevelPressure = doc["high_level_pressure"] | HIGH_LEVEL_PRESSURE;
-  irrigationConfig.lowLevelPressure = doc["low_level_pressure"] | LOW_LEVEL_PRESSURE;
-  applyConfig();
-}
+void applyAppConfig(const JsonDocument& doc) {
+  controllerConfig.numberOfGrassZones = doc["number_of_grass_zones"] | MAX_NUMBER_OF_GRASS_ZONES;
+  controllerConfig.numberOfDripZones = doc["number_of_drip_zones"] | MAX_NUMBER_OF_DRIP_ZONES;
+  controllerConfig.fillingMaxMinutes = doc["filling_max_minutes"] | FILLING_MAX_MINUTES;
+  controllerConfig.grassMaxMinutes   = doc["grass_max_minutes"]   | GRASS_MAX_MINUTES;
+  controllerConfig.dripMaxMinutes    = doc["drip_max_minutes"]    | DRIP_MAX_MINUTES;
+  controllerConfig.leakageDetectorThreshold = doc["leakage_detector_threshold"] | LEAKAGE_DETECTOR_THRESHOLD;
+  controllerConfig.levelFilteringSeconds = doc["level_filtering_seconds"] | LEVEL_FILTERING_SECONDS;
+  controllerConfig.buttonFilteringMs = doc["button_filtering_ms"] | BUTTON_FILTERING_MS;
+  controllerConfig.grassPumpStartDelaySeconds = doc["grass_pump_start_delay_seconds"] |  GRASS_PUMP_START_DELAY_SECONDS;
+  controllerConfig.highLevelPressure = doc["high_level_pressure"] | HIGH_LEVEL_PRESSURE;
+  controllerConfig.lowLevelPressure = doc["low_level_pressure"] | LOW_LEVEL_PRESSURE;
 
-void applyConfig() {
-  fillingMaxMs = irrigationConfig.fillingMaxMinutes * 60 * 1000UL; // 20 minutes
-  grassMaxMs   = irrigationConfig.grassMaxMinutes   * 60 * 1000UL; // 30 minutes
-  dripMaxMs    = irrigationConfig.dripMaxMinutes    * 60 * 1000UL;  // 120 minutes
+  fillingMaxMs = controllerConfig.fillingMaxMinutes * 60 * 1000UL; 
+  grassMaxMs   = controllerConfig.grassMaxMinutes   * 60 * 1000UL; 
+  dripMaxMs    = controllerConfig.dripMaxMinutes    * 60 * 1000UL; 
 
-  levelFilteringMsThreshold = (irrigationConfig.levelFilteringSeconds * 1000UL);
+  levelFilteringMsThreshold = (controllerConfig.levelFilteringSeconds * 1000UL);
   filterState.threshold[TANK_UPPER_LIMIT2_SWITCH - 1] = levelFilteringMsThreshold;
   filterState.threshold[TANK_UPPER_LIMIT1_SWITCH - 1] = levelFilteringMsThreshold;
   filterState.threshold[TANK_UPPER_MID_SWITCH - 1] = levelFilteringMsThreshold;
   filterState.threshold[TANK_LOWER_MID_SWITCH - 1] = levelFilteringMsThreshold;
   filterState.threshold[TANK_LOWER_LIMIT_SWITCH - 1] = levelFilteringMsThreshold;
-  filterState.threshold[BUTTON_FILLING - 1] = irrigationConfig.buttonFilteringMs;
-  filterState.threshold[BUTTON_GRASS - 1] = irrigationConfig.buttonFilteringMs;
-  filterState.threshold[BUTTON_DRIP - 1] = irrigationConfig.buttonFilteringMs;
+  filterState.threshold[BUTTON_FILLING - 1] = controllerConfig.buttonFilteringMs;
+  filterState.threshold[BUTTON_GRASS - 1] = controllerConfig.buttonFilteringMs;
+  filterState.threshold[BUTTON_DRIP - 1] = controllerConfig.buttonFilteringMs;
+  filterState.threshold[BUTTON_ZONE_SWITCH - 1] = controllerConfig.buttonFilteringMs;
 
-  if (irrigationConfig.numberOfGrassZones <= 6) {
-    // Apply specific configuration for 6 or fewer grass zones
-    grassZones[0] = GRASS_ZONE_1;
-    grassZones[1] = GRASS_ZONE_2;
-    grassZones[2] = GRASS_ZONE_3;
-    grassZones[3] = GRASS_ZONE_4;
-    grassZones[4] = GRASS_ZONE_5;
-    grassZones[5] = GRASS_ZONE_6;
+  if (controllerConfig.numberOfGrassZones > 6) {
+    Serial.println("Warning: number_of_grass_zones exceeds maximum supported 6. Limiting to 6.");
+    controllerConfig.numberOfGrassZones = 6;
   }
-
-  Serial.print("Level debounce seconds: ");Serial.println(irrigationConfig.levelFilteringSeconds);
-  Serial.print("Button debounce ms: ");Serial.println(irrigationConfig.buttonFilteringMs);
+    // Apply specific configuration for 6 or fewer grass zones
+  grassZones[0] = GRASS_ZONE_1;
+  grassZones[1] = GRASS_ZONE_2;
+  grassZones[2] = GRASS_ZONE_3;
+  grassZones[3] = GRASS_ZONE_4;
+  grassZones[4] = GRASS_ZONE_5;
+  grassZones[5] = GRASS_ZONE_6;
 }
 
 void showPressure(uint8_t code, uint8_t line, uint8_t size) {
@@ -154,10 +153,10 @@ void showPressure(uint8_t code, uint8_t line, uint8_t size) {
 void showTime() {
   char tm[12];
   char temp[24];
-  char pcf_status = pcf_init_code ? 'E' : ' ';
+  char pcf_status = pcf_init_code && timeBlink ? 'E' : ' ';
   if (rtcReady) {
     sprintf(tm, "%02u:%02u:%02u %c", rtc.now().hour(), rtc.now().minute(), rtc.now().second(), pcf_status);
-    sprintf(temp, "%.2f%cC     ", rtc.getTemperature(), (char) 0xF7);
+    sprintf(temp, "%.1f%cC gZ%d  ", rtc.getTemperature(), (char) 0xF7, controllerConfig.numberOfGrassZones);
     temp[11] = '\0';
   } else {
     sprintf(tm, "%02u:%02u:%02u %c", ntp.hours(), ntp.minutes(), ntp.seconds(), pcf_status);
@@ -211,8 +210,8 @@ void showStates() {
   }
 
   char level = level_4 ? '4' : level_3 ? '3' : level_2 ? '2' : level_1 ? '1' : '0';
-  oled.fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0); oled.drawBitmap(6 * 2 * 9, 8 * 3, bidon, 16, 24, OLED_WHITE);
-  oled.setCursor(6 * 2 * 9 + 3, 8 * 3 + 5); oled.setTextSize(2); oled.print(level); oled.display();
+  oled.fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0); oled.drawBitmap(6 * 2 * 9 + 2, 8 * 3, bidon, 16, 24, OLED_WHITE);
+  oled.setCursor(6 * 2 * 9 + 5, 8 * 3 + 5); oled.setTextSize(2); oled.print(level); oled.display();
   if (prevLevel != level) {
     Serial.print("Tank Level: "); Serial.println(level);
     prevLevel = level;
@@ -227,8 +226,8 @@ void printTestValues(const JsonDocument& doc) {
 
   // Print values
   Serial.println("Config loaded:");
-  Serial.printf("  - Device Name: %s\n", deviceName);
-  Serial.printf("  - Number of Grass Zones: %d\n", irrigationConfig.numberOfGrassZones);
+  Serial.printf("  - Device Name: %s\n", deviceName != nullptr ? deviceName : "Unknown");
+  Serial.printf("  - Number of Grass Zones: %d\n", controllerConfig.numberOfGrassZones);
   Serial.printf("  - Enabled: %s\n", enabled ? "true" : "false");
 }
 
@@ -240,11 +239,19 @@ void setup() {
 
   printBoardInfo();
   initFs();
-  loadFile(config, "/app_config.json");
-  applyJsonConfig(config);
-  printTestValues(config);
 
-  loadFile(schedule, "/schedule.json");
+  // Load App (Controller) Configuration
+  loadJsonFile(appConfigJson, "/config/app.json");
+  applyAppConfig(appConfigJson);
+  printTestValues(appConfigJson);
+  Serial.printf("  - Filling max minutes: %d\n", controllerConfig.fillingMaxMinutes);
+
+  // Load manual control configuration
+  loadJsonFile(manualControlJson, "/config/manual_control.json");
+
+  // Load schedule configuration
+  loadJsonFile(scheduleJson, "/config/auto_schedule.json");
+
   // Set I2C pins
   Wire.setPins(I2C_SDA, I2C_SCL);
 
@@ -259,10 +266,11 @@ void setup() {
   Serial.println("Init OLED...");
   init_oled();
 //  test_oled();
-//#ifndef DEV_BOARD_OLED 
   // Init PCFs
   pcf_init_code = init_pcfs();
+#ifndef DEV_BOARD_OLED 
   if (pcf_init_code) diag |= PCF_INIT_FAILED;
+#endif
   String s = "Init PCFs... " + (pcf_init_code == 0 ? "OK" : "Error " + String(pcf_init_code, HEX));
   Serial.println(s);oled_show(0, s);
   uint8_t code = pressureSensor.init();
@@ -270,24 +278,32 @@ void setup() {
   Serial.println(s);oled_show(0, s);
 
   test_pcf();
-//#endif
 
   networkInit();
   oled_show(1, "Network started.");
 
-  applyConfig();
 } 
 
 void closeGrassValves() {
-  for (uint8_t i = 0; i < irrigationConfig.numberOfGrassZones; i++) {
+  for (uint8_t i = 0; i < controllerConfig.numberOfGrassZones; i++) {
     setOutput(grassZones[i], true);
   }
 }
 
 void closeDripValves() {
-  for (uint8_t i = 0; i < irrigationConfig.numberOfDripZones; i++) {
+  for (uint8_t i = 0; i < controllerConfig.numberOfDripZones; i++) {
     setOutput(dripZones[i], true);
   }
+}
+
+void changeGrassZone(int8_t step) {
+  grass_zone_index += step;
+  if (grass_zone_index >= controllerConfig.numberOfGrassZones) {
+    grass_zone_index = 1;
+  } else if (grass_zone_index < 1) {
+    grass_zone_index = controllerConfig.numberOfGrassZones - 1;
+  }
+  lastTimeGrassZoneSwitched = millis();
 }
 
 void loop() {
@@ -309,13 +325,16 @@ void loop() {
     lastTimeShowTime = currentTime;
 
     if (grassIrrigationRequested) {
-      if ((currentTime - lastTimeGrassIrrigationRequested) >= grassMaxMs) {
+      uint32_t grassIrrigationTime = currentTime - lastTimeGrassIrrigationRequested;
+      if (grassIrrigationTime >= grassMaxMs) {
         grassIrrigationRequested = false;
         closeGrassValves();
         Serial.println("Grass irrigation completed in " + String(grassMaxMs / 60000UL) + " minutes");
       } else {
-        grass_zone_index = 1 + (currentTime - lastTimeGrassIrrigationRequested) * (irrigationConfig.numberOfGrassZones-1) / grassMaxMs;
-        for (uint8_t i = 1; i < irrigationConfig.numberOfGrassZones; i++) {
+        if ((currentTime - lastTimeGrassZoneSwitched) >= (grassMaxMs / (controllerConfig.numberOfGrassZones-1))) {
+          changeGrassZone(+1);
+        }
+        for (uint8_t i = 1; i < controllerConfig.numberOfGrassZones; i++) {
           setOutput(grassZones[i], i != grass_zone_index);
         }
       }
@@ -531,23 +550,23 @@ void handleButtons() {
   if (lastButState != butState) {
     Serial.print("Button change: 0x");Serial.println(butState, HEX);
     switch (butState) {
-      case 0x8000:    // Filling button
+      case BUTTON_FILLING_MASK:    // Filling button
         fillingRequested = !fillingRequested;
         if (!level_4) fillingEnabled = true;
         //i1FilterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
         leakageDetectorCounter = 0;
         break;
-      case 0x4000:    // Grass button
+      case BUTTON_GRASS_MASK:    // Grass button
         grassIrrigationRequested = !grassIrrigationRequested;
         if (grassIrrigationRequested) {
           if (level_1) drainingDisabled = false;
           lastTimeGrassIrrigationRequested = millis();
-          leakageDetectorCounter = 0;
+          lastTimeGrassZoneSwitched = millis();
         } else {
           closeGrassValves();
         }
         break;
-      case 0x2000:    // Drip button
+      case BUTTON_DRIP_MASK:    // Drip button
         dripIrrigationRequested = !dripIrrigationRequested;
         if (dripIrrigationRequested) {
           if (level_1) drainingDisabled = false;
@@ -557,10 +576,15 @@ void handleButtons() {
           closeDripValves();
         }
         break;
-      case 0xC000:    // Filling and Grass buttons together
+      case BUTTON_ZONE_SWITCH_MASK:    // Zone Switch button
+        if (grassIrrigationRequested) {
+          changeGrassZone(+1);
+        }
+        break;
+      case BUTTON_FILLING_MASK | BUTTON_GRASS_MASK:    // Filling and Grass buttons together
         /* code */
         break;
-      case 0x60:    // Grass and Drip buttons together
+      case BUTTON_GRASS_MASK | BUTTON_DRIP_MASK:    // Grass and Drip buttons together
         /* code */
         break;
       

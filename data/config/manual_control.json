@@ -1,0 +1,17 @@
+{
+  "grass_area": {  
+    "enabled": "true",
+    "zones": [3, 4],
+    "shuffle": true,
+    "durationMinutes": 20,
+    "delayedStart": "0h"
+  },
+  "drip_area": {
+    "enabled": "true",
+    "zones": [13, 14],
+    "shuffle": true,
+    "durationMinutes": 60,
+    "delayedStart": "0h"
+  }
+
+}    
