@@ -4,15 +4,15 @@
 
 // Default configuration values
 #define FILLING_MAX_MINUTES           15
-#define GRASS_MAX_MINUTES             30      // test debug value
+#define GRASS_MAX_MINUTES             20      // test debug value
 #define DRIP_MAX_MINUTES             120
 #define LEAKAGE_DETECTOR_THRESHOLD     3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
 
 #define LEVEL_FILTERING_SECONDS          10   // hold the filling 10 seconds on level down
 #define BUTTON_FILTERING_MS              50   // button debounce 50ms
-#define GRASS_PUMP_START_DELAY_SECONDS    8   // Open the Main Valve, then 8 seconds later start the pump
+#define GRASS_PUMP_START_DELAY_SECONDS    7   // Open the Main Valve, then 7 seconds later start the pump
 
-#define MAX_NUMBER_OF_GRASS_ZONES        16   // Number of grass irrigation zones
+#define MAX_NUMBER_OF_GRASS_ZONES         5   // Number of grass irrigation zones
 #define MAX_NUMBER_OF_DRIP_ZONES         16   // Number of drip irrigation zones
 
 // Internal logic timings
@@ -20,7 +20,7 @@
 #define STATUS_SHOW_PERIOD_MS   200UL
 #define INPUTS_SCAN_PERIOD_MS    10UL
 
-typedef struct IrrigationConfig {
+typedef struct ControllerConfig {
     uint16_t fillingMaxMinutes = FILLING_MAX_MINUTES;                       // Maximum filling time in minutes
     uint16_t grassMaxMinutes   = GRASS_MAX_MINUTES;                         // Maximum grass irrigation time in minutes
     uint16_t dripMaxMinutes    = DRIP_MAX_MINUTES;                          // Maximum drip irrigation time in minutes
@@ -32,11 +32,11 @@ typedef struct IrrigationConfig {
     int32_t lowLevelPressure     = LOW_LEVEL_PRESSURE;                      // Low level pressure threshold
     uint8_t numberOfGrassZones   = MAX_NUMBER_OF_GRASS_ZONES;               // Max. number of grass irrigation zones
     uint8_t numberOfDripZones    = MAX_NUMBER_OF_DRIP_ZONES;                // Max. number of drip irrigation zones
-} IrrigationConfig;
+} ControllerConfig;
 
 // ____________________________________________________________________________________________
 
-extern IrrigationConfig irrigationConfig;
+extern ControllerConfig controllerConfig;
 
 #define setGrassMainValve(value)    setOutput(MAIN_VALVE_GRASS, !(value))
 #define setDripMainValve(value)     setOutput(MAIN_VALVE_DRIP, !(value))

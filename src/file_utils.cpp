@@ -15,7 +15,7 @@ bool initFs() {
   return res;
 }
 
-bool loadFile(JsonDocument& doc, String fileName) {
+bool loadJsonFile(JsonDocument& doc, String fileName) {
   File file = LittleFS.open(fileName, "r");
   if (!file || file.isDirectory()) {
     Serial.println("Failed to open file " + fileName);
