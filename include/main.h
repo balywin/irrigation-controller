@@ -3,7 +3,7 @@
 #include "hw_config.h"
 
 // Default configuration values
-#define FILLING_MAX_MINUTES           15
+#define FILLING_MAX_MINUTES            9
 #define GRASS_MAX_MINUTES             20      // test debug value
 #define DRIP_MAX_MINUTES             120
 #define LEAKAGE_DETECTOR_THRESHOLD     3      // When filling is started >3 times without any irrigation start, disable filling and log system alert (malfunction)
@@ -16,9 +16,10 @@
 #define MAX_NUMBER_OF_DRIP_ZONES         16   // Number of drip irrigation zones
 
 // Internal logic timings
-#define TIME_UPDATE_PERIOD_MS  1000UL
-#define STATUS_SHOW_PERIOD_MS   200UL
-#define INPUTS_SCAN_PERIOD_MS    10UL
+#define TIME_UPDATE_PERIOD_MS    (1000UL)
+#define STATUS_SHOW_PERIOD_MS     (200UL)
+#define INPUTS_SCAN_PERIOD_MS      (10UL)
+#define PRESSURE_SCAN_PERIOD_MS   (200UL)
 
 typedef struct ControllerConfig {
     uint16_t fillingMaxMinutes = FILLING_MAX_MINUTES;                       // Maximum filling time in minutes
@@ -59,3 +60,4 @@ void applyConfig();
 void checkForDefects();
 void showDiagInfo();
 void controlOutputs();
+void changeGrassZone(int8_t step);
