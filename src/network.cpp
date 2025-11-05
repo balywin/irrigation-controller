@@ -3,6 +3,7 @@
 #include "hw_config.h"
 #include "network.h"
 #include "i2c/oled.h"
+#include "webserver_embedded.h"
 
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
@@ -23,13 +24,7 @@
 #else
   #include <WebServer_WT32_ETH01.h>
 #endif
-#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER  
-  #include <ESPAsyncWebServer.h>
-  #define ProperWebServer AsyncWebServer
-#else
-  #include <WebServer.h>
-  #define ProperWebServer WebServer
-#endif  
+
 #include <ElefantOTA.h>
 
 // If no DHCP used, select a static IP address, subnet mask and a gateway IP address according to your local network
@@ -41,7 +36,7 @@
 // IPAddress myDNS(8, 8, 8, 8);
 
 // listen for incoming clients
-ProperWebServer server(80);
+AsyncWebServer server(80);
 int flagReadDi = 0;
 
 // Variable to store the HTTP request
@@ -237,7 +232,12 @@ void serverInit() {
   ElegantOTA.onStart(onOTAStart);
   ElegantOTA.onProgress(onOTAProgress);
   ElegantOTA.onEnd(onOTAEnd);
+
+  // Setup embedded web server (serves the firmware-embedded SPA and config APIs)
+  setupEmbeddedWebServer(server);
+
   server.begin();
+  Serial.println("Embedded web server started on port 80");
 }
 
 void networkLoop() {

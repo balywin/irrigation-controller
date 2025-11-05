@@ -13,17 +13,18 @@
 #include <NTP.h>
 #include <WiFiUdp.h>
 #include <RTClib.h>
-#include <HX710B.h>
+#include <HX710AB.h>
 
 #include "i2c/inout.h"
 #include "i2c/oled.h"
 #include "network.h"
+#include "webserver_embedded.h"
 
 RTC_DS3231 rtc;
 WiFiUDP ntpUDP;
 NTP ntp(ntpUDP);
 
-HX710B pressureSensor(HX_SCK_PIN, HX_DAT_PIN);
+HX710B pressureSensor(HX_DAT_PIN, HX_SCK_PIN);
 
 ControllerConfig controllerConfig;
 
@@ -40,6 +41,7 @@ unsigned long lastTimeShowTime    = 0;
 unsigned long lastTimeShowLevel   = 0;
 unsigned long lastTimeShowInputs  = 0;
 unsigned long lastTimeInputsScanned = 0;
+unsigned long lastTimeFillingRequested = 0;
 unsigned long lastTimeGrassIrrigationRequested = 0;
 unsigned long lastTimeDripIrrigationRequested = 0;
 unsigned long lastTimeGrassZoneSwitched = 0;
@@ -135,19 +137,12 @@ void applyAppConfig(const JsonDocument& doc) {
   grassZones[5] = GRASS_ZONE_6;
 }
 
-void showPressure(uint8_t code, uint8_t line, uint8_t size) {
+void showPressure(uint8_t line, uint8_t size) {
   char pressure[24];
-  if ( code != HX710B_OK ) {
-    sprintf(pressure, "err: %d", code);
-    oled_show(line, pressure, size);
-    oled_show(line, pressure, size);
-    Serial.println("Error reading pressure");
-  } else {
-    sprintf(pressure, "%d ", ((long) pressureRaw) / 1024);
-    oled_show(line, pressure, size);
-    Serial.print("Pressure raw value: ");
-    Serial.println((long) pressureRaw);
-  }
+  sprintf(pressure, "%d ", ((long) pressureRaw) / 1024);
+  Serial.print("Pressure raw value: ");
+  Serial.println((long) pressureRaw);
+  oled_show(line, pressure, size);
 }
 
 void showTime() {
@@ -156,7 +151,7 @@ void showTime() {
   char pcf_status = pcf_init_code && timeBlink ? 'E' : ' ';
   if (rtcReady) {
     sprintf(tm, "%02u:%02u:%02u %c", rtc.now().hour(), rtc.now().minute(), rtc.now().second(), pcf_status);
-    sprintf(temp, "%.1f%cC gZ%d  ", rtc.getTemperature(), (char) 0xF7, controllerConfig.numberOfGrassZones);
+    sprintf(temp, "%.1f%cC %d  ", rtc.getTemperature(), (char) 0xF7, fillingMaxMs / 60000UL);
     temp[11] = '\0';
   } else {
     sprintf(tm, "%02u:%02u:%02u %c", ntp.hours(), ntp.minutes(), ntp.seconds(), pcf_status);
@@ -173,7 +168,7 @@ void showStates() {
   char states[24];
   char pumpStates[14];
   int32_t irrigationRemainingMinutes = (millis() - lastTimeGrassIrrigationRequested) / 60000L;
-  sprintf(states, "%04X %d%d %d%d G%02d L%d ", iState, fillingRequested, fillingEnabled, 
+  sprintf(states, "%04X %d%d %d%d G%02d L%d ", iState, fillingRequested, fillingEnabled,
           grassIrrigationRequested, drainingDisabled, irrigationRemainingMinutes, leakageDetectorCounter);
   //Serial.println(states);
   oled_show(7, states, 1);
@@ -182,7 +177,7 @@ void showStates() {
   uint32_t tlsCnt = (millis() - filterState.counter[TANK_LOWER_LIMIT_SWITCH - 1])/100;
   sprintf(pumpStates, "%c  %s%c  ",
           fillingRequested ? 'F' : ' ',
-          grassIrrigationRequested ? "G" + String(grass_zone_index) : "   ", 
+          grassIrrigationRequested ? "G" + String(grass_zone_index) : "  ", 
           dripIrrigationRequested ? 'D' : ' ');
   if (tusCnt > 1) {
     if (tusCnt != oldTusCnt) {
@@ -273,8 +268,8 @@ void setup() {
 #endif
   String s = "Init PCFs... " + (pcf_init_code == 0 ? "OK" : "Error " + String(pcf_init_code, HEX));
   Serial.println(s);oled_show(0, s);
-  uint8_t code = pressureSensor.init();
-  s = "Init H710B... " + (code == HX710B_OK ? "OK" : "Error " + String(code, HEX));
+  pressureSensor.begin();
+  //s = "Init H710B... " + (code == HX710B_OK ? "OK" : "Error " + String(code, HEX));
   Serial.println(s);oled_show(0, s);
 
   test_pcf();
@@ -282,6 +277,7 @@ void setup() {
   networkInit();
   oled_show(1, "Network started.");
 
+  changeGrassZone(0);
 } 
 
 void closeGrassValves() {
@@ -340,6 +336,11 @@ void loop() {
       }
     }
 
+    if (fillingRequested && ((currentTime - lastTimeFillingRequested) >= fillingMaxMs)) {
+      fillingRequested = false;
+      Serial.println("Filling completed in " + String(fillingMaxMs / 60000UL) + " minutes");
+    }
+
     if ((dripIrrigationRequested && ((currentTime - lastTimeDripIrrigationRequested) >= dripMaxMs))) {
       dripIrrigationRequested = false;
       closeDripValves();
@@ -360,18 +361,18 @@ void loop() {
     lastTimeInputsScanned = currentTime;
   }
   // Pressure sensor
-  // currentTime = millis();
-  // if ((currentTime - lastTimeShowLevel) >= INPUTS_UPDATE_PERIOD_MS) {
-  //   uint8_t code = pressureSensor.read(&pressureRaw, 500UL);
-  //   showPressure(code, 4, 2);
-  //   lastTimeShowLevel = currentTime;
-  // }
+  currentTime = millis();
+  if ((currentTime - lastTimeShowLevel) >= PRESSURE_SCAN_PERIOD_MS) {
+    pressureRaw = pressureSensor.read(true);
+    showPressure(6, 1);
+    lastTimeShowLevel = currentTime;
+  }
 
   // if ((long)pressureRaw > HIGH_LEVEL_PRESSURE) {
   //   fillingEnabled = false;
   // }
   currentTime = millis();
-  if ((currentTime - lastTimeShowInputs) >= (STATUS_SHOW_PERIOD_MS)) {
+  if ((currentTime - lastTimeShowInputs) >= STATUS_SHOW_PERIOD_MS) {
     showStates();
     showDiagInfo();
     lastTimeShowInputs = currentTime;
@@ -496,12 +497,11 @@ void checkForDefects() {
     dripIrrigationRequested = false;
     diag |= L12_DEFECT;
   } else if (level_4 && (!level_3 || !level_2 || !level_1)) {
-    fillingEnabled = false;
     fillingRequested = false;
     diag |= L123_DEFECT;
   }
+
   if (getFilteredInput(TANK_UPPER_LIMIT1_SWITCH) && !getFilteredInput(TANK_UPPER_LIMIT2_SWITCH)) {
-    fillingEnabled = false;
     fillingRequested = false;
     diag |= TANK_UPPER_LIMIT_DEFECT;
   }
@@ -551,7 +551,15 @@ void handleButtons() {
     Serial.print("Button change: 0x");Serial.println(butState, HEX);
     switch (butState) {
       case BUTTON_FILLING_MASK:    // Filling button
-        fillingRequested = !fillingRequested;
+        if (!fillingRequested) {
+          lastTimeFillingRequested = millis();
+          fillingMaxMs = controllerConfig.fillingMaxMinutes / (level_2 ? 2 : level_3 ? 3 : 1) * 60 * 1000UL;
+          fillingRequested = true;
+        } else if (millis() - lastTimeFillingRequested < 3000UL) {
+          fillingMaxMs *= 2;
+        } else {
+          fillingRequested = false;
+        }
         if (!level_4) fillingEnabled = true;
         //i1FilterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
         leakageDetectorCounter = 0;

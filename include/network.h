@@ -13,6 +13,11 @@
   } WiFiCredentials;
 #endif
 
+#include <ESPAsyncWebServer.h>
+
+// HTTP server for web UI and API
+extern AsyncWebServer server;
+
 uint8_t getNetworkStatus();
 IPAddress getNetworkLocalIp();
 bool getNetworkIsConnected();

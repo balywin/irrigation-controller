@@ -32,10 +32,11 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
           }
         });
       #else
-        AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", ELEGANT_HTML, sizeof(ELEGANT_HTML));
+        // Use non-deprecated beginResponse overload instead of beginResponse_P
+        AsyncWebServerResponse *response = request->beginResponse(200, String("text/html"), (const uint8_t*)ELEGANT_HTML, sizeof(ELEGANT_HTML));
       #endif
-      // response->addHeader("Content-Encoding", "gzip");
-      // request->send(response);
+      //  response->addHeader("Content-Encoding", "gzip");
+      //  request->send(response);
     });
   #else
     _server->on("/update", HTTP_GET, [&](){
@@ -43,7 +44,7 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
         return _server->requestAuthentication();
       }
       _server->sendHeader("Content-Encoding", "gzip");
-      _server->send_P(200, "text/html", (const char*)ELEGANT_HTML, sizeof(ELEGANT_HTML));
+      _server->send(200, String("text/html"), (const char*)ELEGANT_HTML, sizeof(ELEGANT_HTML));
     });
   #endif
 

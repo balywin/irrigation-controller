@@ -62,16 +62,9 @@ _____ _                        _    ___ _____  _
   #include "FS.h"
   #include "Update.h"
   #include "StreamString.h"
-  #if ELEGANTOTA_USE_ASYNC_WEBSERVER == 1
-    #include "AsyncTCP.h"
-    #include "ESPAsyncWebServer.h"
-    #define ELEGANTOTA_WEBSERVER AsyncWebServer
-  #else
-    #include "WiFi.h"
-    #include "WiFiClient.h"
-    #include "WebServer.h"
-    #define ELEGANTOTA_WEBSERVER WebServer
-  #endif
+  #include "AsyncTCP.h"
+  #include "ESPAsyncWebServer.h"
+  #define ELEGANTOTA_WEBSERVER AsyncWebServer
   #define HARDWARE "ESP32"
 #elif defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350)
   #include <functional>
