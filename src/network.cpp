@@ -4,6 +4,9 @@
 #include "network.h"
 #include "i2c/oled.h"
 #include "webserver_embedded.h"
+#include "websocket_protocol.h"
+#include "fallback_page.h"
+#include <Update.h>
 
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
@@ -215,18 +218,94 @@ String processor(const String& var) {
   return var;
 }
 
+static bool littleFsHasWebUI() {
+  return LittleFS.exists("/index.html");
+}
+
 void serverInit() {
 
-  // Route for root / web page
-#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER  
+  // Root → redirect to /index.html (served by embedded webserver from PROGMEM)
+#ifdef ELEGANTOTA_USE_ASYNC_WEBSERVER
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(LittleFS, "/index.html", String(), false, processor);
+    request->redirect("/index.html");
   });
 #else
   server.on("/", []() {
     server.send(200, "text/plain", "Hi! This is ElegantOTA Demo.");
   });
 #endif
+
+  // Always-available recovery page
+  server.on("/recovery", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", FALLBACK_HTML);
+  });
+
+  // Fallback API: device status
+  server.on("/api/fallback/status", HTTP_GET, [](AsyncWebServerRequest *request){
+    String json = "{";
+    json += "\"ip\":\"" + String(ip2CharArray(getNetworkLocalIp())) + "\",";
+    json += "\"uptime\":\"" + String(millis() / 1000) + "s\",";
+    json += "\"heap\":\"" + String(ESP.getFreeHeap()) + " bytes\",";
+    json += "\"fs\":\"" + String(LittleFS.usedBytes()) + "/" + String(LittleFS.totalBytes()) + " bytes\"";
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
+  // Fallback API: upload a full LittleFS image (OTA filesystem partition)
+  server.on("/api/fallback/fs-upload", HTTP_POST, [](AsyncWebServerRequest *request){
+    if (Update.hasError()) {
+      request->send(400, "text/plain", "Filesystem update failed: " + String(Update.errorString()));
+    } else {
+      request->send(200, "text/plain", "OK");
+      delay(1000);
+      ESP.restart();
+    }
+  }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+    if (index == 0) {
+      Serial.printf("Fallback: filesystem upload start: %s\n", filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
+        Serial.printf("Update.begin failed: %s\n", Update.errorString());
+      }
+    }
+    if (Update.isRunning()) {
+      if (Update.write(data, len) != len) {
+        Serial.printf("Update.write failed: %s\n", Update.errorString());
+      }
+    }
+    if (final) {
+      if (Update.end(true)) {
+        Serial.printf("Fallback: filesystem upload complete (%u bytes)\n", index + len);
+      } else {
+        Serial.printf("Update.end failed: %s\n", Update.errorString());
+      }
+    }
+  });
+
+  // Fallback API: upload a single file to LittleFS
+  server.on("/api/fallback/file-upload", HTTP_POST, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", "OK");
+  }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+    static String fsPath;
+    if (index == 0) {
+      fsPath = "/index.html"; // default
+      if (request->hasParam("path", false)) {
+        fsPath = request->getParam("path", false)->value();
+      } else if (request->hasParam("path")) {
+        fsPath = request->getParam("path")->value();
+      }
+      // Ensure parent directories exist (LittleFS creates them automatically)
+      Serial.printf("Fallback: single file upload -> %s\n", fsPath.c_str());
+      File f = LittleFS.open(fsPath, "w");
+      if (f) { f.write(data, len); f.close(); }
+    } else {
+      File f = LittleFS.open(fsPath, "a");
+      if (f) { f.write(data, len); f.close(); }
+    }
+    if (final) {
+      Serial.printf("Fallback: file upload complete %s (%u bytes)\n", fsPath.c_str(), index + len);
+    }
+  });
+
   ElegantOTA.begin(&server, "", "", FIRMWARE_VERSION);    // Start ElegantOTA
   // ElegantOTA callbacks
   ElegantOTA.onStart(onOTAStart);
@@ -235,6 +314,7 @@ void serverInit() {
 
   // Setup embedded web server (serves the firmware-embedded SPA and config APIs)
   setupEmbeddedWebServer(server);
+  setupWebSocketProtocol(server);
 
   server.begin();
   Serial.println("Embedded web server started on port 80");
@@ -245,6 +325,7 @@ void networkLoop() {
   server.handleClient();
 #endif  
   ElegantOTA.loop();
+  websocketProtocolLoop();
 }
 
 char* ip2CharArray(IPAddress ip) {

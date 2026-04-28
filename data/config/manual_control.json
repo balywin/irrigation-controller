@@ -1,17 +1,16 @@
 {
-  "grass_area": {  
-    "enabled": "true",
-    "zones": [3, 4],
+  "grass_area": {
+    "enabled": true,
+    "zones": [[2, 3], [1, 4], [2, 5]],
     "shuffle": true,
     "durationMinutes": 20,
-    "delayedStart": "0h"
+    "delayedStart": "0m"
   },
   "drip_area": {
-    "enabled": "true",
-    "zones": [13, 14],
+    "enabled": true,
+    "zones": [[1, 2], [3, 4], [1, 5]],
     "shuffle": true,
     "durationMinutes": 60,
-    "delayedStart": "0h"
+    "delayedStart": "0m"
   }
-
-}    
+}

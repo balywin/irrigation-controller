@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <NTP.h>
 #include "hw_config.h"
 
@@ -38,6 +39,11 @@ typedef struct ControllerConfig {
 // ____________________________________________________________________________________________
 
 extern ControllerConfig controllerConfig;
+extern JsonDocument scheduleJson;
+extern uint32_t fillingMaxMs;
+extern uint32_t grassMaxMs;
+extern uint32_t dripMaxMs;
+extern uint32_t grassGroupSwitchMs;
 
 #define setGrassMainValve(value)    setOutput(MAIN_VALVE_GRASS, !(value))
 #define setDripMainValve(value)     setOutput(MAIN_VALVE_DRIP, !(value))
@@ -61,3 +67,26 @@ void checkForDefects();
 void showDiagInfo();
 void controlOutputs();
 void changeGrassZone(int8_t step);
+void startGrassIrrigation();
+void stopGrassIrrigation();
+void startDripIrrigation();
+void stopDripIrrigation();
+void startFilling();
+void stopFilling();
+bool isGrassIrrigating();
+bool isDripIrrigating();
+bool isFillingActive();
+bool isFillingEnabled();
+bool isDrainingDisabled();
+int8_t getGrassZoneIndex();
+uint32_t getPressureRawValue();
+uint8_t getWaterLevelPercent();
+bool getPumpWellActive();
+bool getPumpGrassActive();
+bool getPumpDripActive();
+bool getGrassMainValveActive();
+bool getDripMainValveActive();
+uint32_t getGrassRemainingMs();
+uint32_t getGrassGroupRemainingMs();
+uint32_t getDripRemainingMs();
+uint32_t getFillingRemainingMs();

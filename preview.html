@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Irrigation Controller — Preview</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f4f6f8; color: #333; font-size: 14px; }
+.app { max-width: 860px; margin: 0 auto; padding: 0 1rem 1rem; }
+.emergency-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; position: sticky; top: 0; z-index: 100; background: #f4f6f8; padding: 1rem 0 0.5rem; }
+.emergency-btn { flex: 1; padding: 0.5rem 0.6rem; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; letter-spacing: 0.04em; background: #e5e7eb; color: #9ca3af; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: 0.4rem; }
+.e-title { text-align: left; display: inline-flex; align-items: center; gap: 0.3rem; }
+.e-state { text-align: center; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; }
+.e-action { text-align: right; min-width: 5rem; }
+.e-remaining { font-size: 0.7rem; font-weight: 700; white-space: nowrap; opacity: 0.85; }
+.e-remaining-left { margin-right: 0.3rem; padding: 1px 4px; border-radius: 4px; background: rgba(255,255,255,0.18); }
+.e-zone-active { font-weight: 800; color: #fff; background: rgba(255,255,255,0.22); border-radius: 3px; padding: 1px 4px; animation: e-zone-pulse 1.2s ease-in-out infinite; }
+@keyframes e-zone-pulse { 0%, 100% { background: rgba(255,255,255,0.22); } 50% { background: rgba(255,255,255,0.38); } }
+.e-state-text { font-weight: 600; }
+.btn.active-group { outline: 2px solid #fb923c; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(251,146,60,0.4), 0 0 12px rgba(251,146,60,0.6); animation: active-group-pulse 1.4s ease-in-out infinite; }
+@keyframes active-group-pulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(251,146,60,0.4), 0 0 12px rgba(251,146,60,0.6); } 50% { box-shadow: 0 0 0 6px rgba(251,146,60,0.55), 0 0 18px rgba(251,146,60,0.85); } }
+.e-zones { font-size: 0.7rem; font-weight: 600; opacity: 0.9; white-space: nowrap; }
+.e-water-level { font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+.battery { display: inline-flex; align-items: center; vertical-align: middle; color: #c2410c; }
+.battery-cell { position: relative; width: 36px; height: 16px; border: 2px solid currentColor; border-radius: 3px; overflow: hidden; background: #fff7ed; }
+.battery-nub { display: inline-block; width: 3px; height: 6px; background: currentColor; border-radius: 0 1px 1px 0; margin-left: 1px; }
+.battery-fill { position: absolute; left: 0; top: 0; bottom: 0; width: var(--fill-pct, 0%); background: linear-gradient(180deg, #fdba74 0%, #fb923c 60%, #f97316 100%); box-shadow: inset 0 0 4px rgba(234,88,12,0.35); transition: width 0.4s ease; }
+.battery-rise { position: absolute; top: 0; bottom: 0; left: var(--fill-pct, 0%); width: 0; background: linear-gradient(180deg, #fed7aa 0%, #fdba74 100%); pointer-events: none; }
+.battery.filling .battery-rise { animation: battery-rise 1.6s ease-out infinite; }
+@keyframes battery-rise { 0% { width: 0; opacity: 0.85; } 100% { width: calc(100% - var(--fill-pct, 0%)); opacity: 0; } }
+.battery-pct { font-size: 0.85rem; font-weight: 700; white-space: nowrap; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,0.15); }
+.e-title.e-title-battery { width: 100%; display: flex; align-items: center; }
+.e-title-battery .battery { flex: 1; width: 100%; }
+.e-title-battery .battery-cell { flex: 1; width: auto; height: 22px; border-radius: 4px; }
+.e-title-battery .battery-nub { width: 4px; height: 9px; border-radius: 0 2px 2px 0; }
+.emergency-btn.e-active { color: #fff; }
+.emergency-btn.e-paused { color: #fff; filter: brightness(0.7); }
+.emergency-btn.e-inactive { background: #e5e7eb; color: #9ca3af; cursor: default; }
+.emergency-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.6); }
+.emergency-btn.e-inactive .e-water-level { color: inherit; }
+.ws-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; flex-shrink: 0; cursor: pointer; }
+.ws-icon { display: inline-block; width: 28px; height: 21px; margin-right: 0.5rem; vertical-align: middle; flex-shrink: 0; cursor: pointer; object-fit: contain; transition: filter 0.3s ease, opacity 0.3s ease; }
+.ws-icon.ws-connected   { filter: none; opacity: 1; }
+.ws-icon.ws-reconnecting{ filter: hue-rotate(60deg); opacity: 1; animation: ws-pulse 1s infinite; }
+.ws-icon.ws-disconnected{ filter: grayscale(1) brightness(0.85); opacity: 0.55; }
+.ws-connected { background: #16a34a; }
+.ws-reconnecting { background: #f59e0b; animation: ws-pulse 1s infinite; }
+.ws-disconnected { background: #dc2626; }
+@keyframes ws-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+nav { display: flex; gap: 0.25rem; border-bottom: 2px solid #dde2e8; margin-bottom: 1.5rem; align-items: center; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+nav::-webkit-scrollbar { display: none; }
+nav button { position: relative; padding: 0.6rem 1.2rem; background: none; border: none; border-bottom: 3px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: 0.9rem; color: #666; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+nav button.active { color: #2563eb; border-bottom-color: #2563eb; }
+.status-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; }
+.section { background: #fff; border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.section h2 { margin: 0 0 1rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #888; font-weight: 600; }
+.field { display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 0; border-bottom: 1px solid #f2f2f2; }
+.field:last-child { border-bottom: none; }
+.field label, .field .lbl { color: #444; }
+.field input[type="text"],.field input[type="number"],.field input[type="time"],.field input[type="password"] { width: 160px; padding: 0.3rem 0.5rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: 0.875rem; }
+.field input:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+.card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; background: #fff; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #f2f2f2; }
+.card-header h3 { margin: 0; font-size: 0.95rem; }
+.days { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.25rem; }
+.days label { display: flex; align-items: center; gap: 0.2rem; font-size: 0.8rem; padding: 0.2rem 0.4rem; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
+.days label:has(input:checked) { background: #dbeafe; border-color: #93c5fd; }
+.time-list { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.25rem; }
+.time-row { display: flex; gap: 0.4rem; align-items: center; }
+.save-bar { display: flex; align-items: center; gap: 1rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #f2f2f2; }
+.btn { padding: 0.45rem 1.1rem; border: none; border-radius: 5px; cursor: pointer; font-size: 0.875rem; font-weight: 500; }
+.btn-primary { background: #2563eb; color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.6); }
+.btn-danger { background: #ef4444; color: #fff; padding: 0.25rem 0.6rem; font-size: 0.8rem; }
+[style*="--area-color"] .btn-primary { background: var(--area-color, #2563eb); }
+[style*="--area-color"] .btn-primary:disabled { background: color-mix(in srgb, var(--area-color, #2563eb) 50%, white); }
+[style*="--area-color"] .days label:has(input:checked) { background: color-mix(in srgb, var(--area-color, #2563eb) 20%, white); border-color: var(--area-color, #93c5fd); }
+[style*="--area-color"] input[type="checkbox"] { accent-color: var(--area-color, #2563eb); }
+[style*="--area-color"] input[type="number"], [style*="--area-color"] input[type="text"] { accent-color: var(--area-color, #2563eb); }
+[style*="--area-color"] .toggle input:checked + .toggle-slider { background: var(--area-color, #2563eb); }
+[style*="--area-color"] .card { border-color: var(--area-color, #e5e7eb); border-width: 2px; }
+.btn-secondary { background: #6b7280; color: #fff; }
+.btn-sm { padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+.status-ok { color: #16a34a; font-size: 0.85rem; }
+.status-err { color: #dc2626; font-size: 0.85rem; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: #d1d5db; border-radius: 22px; transition: background 0.2s; cursor: pointer; }
+.toggle-slider::before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.2s; }
+.toggle input:checked + .toggle-slider { background: #2563eb; }
+.toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+.content-disabled { opacity: 0.4; pointer-events: none; }
+.field-disabled { opacity: 0.4; pointer-events: none; }
+.preset-row { display: flex; gap: 0.3rem; flex-wrap: wrap; align-items: center; margin-top: 0.25rem; }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; }
+.status-item { display: flex; flex-direction: column; padding: 0.5rem; background: #f9fafb; border-radius: 6px; border: 1px solid #f2f2f2; }
+.status-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 0.2rem; }
+.status-value { font-size: 0.95rem; font-weight: 600; color: #333; }
+.status-on { color: #16a34a; }
+.status-off { color: #9ca3af; }
+@media (max-width: 600px) {
+  .app { padding: 0.5rem; }
+  .emergency-bar { flex-wrap: wrap; }
+  .emergency-btn { flex: 1 1 45%; min-width: 0; font-size: 0.75rem; padding: 0.5rem 0.4rem; }
+  nav button { padding: 0.5rem 0.8rem; font-size: 0.8rem; }
+  .section { padding: 1rem; }
+  .field { flex-wrap: wrap; gap: 0.3rem; }
+  .field input[type="text"],.field input[type="number"],.field input[type="time"],.field input[type="password"] { width: 100%; }
+  .status-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="emergency-bar" class="emergency-bar"></div>
+  <nav id="main-nav"></nav>
+  <div id="tab-content"></div>
+</div>
+
+<script>
+const APP_CONFIG_DEFAULT = {
+  device_name: "ESP32-Irrigator", wifi_ssid: "", wifi_password: "",
+  filling: { enabled: true, max_minutes: 16, pump_id: 3, level_filtering_seconds: 10, leakage_detector_threshold: 3, high_level_pressure: 120000, low_level_pressure: -200000 },
+  areas: [
+    { id: "Grass", enabled: true, description: "Irrigation for grass areas", pump_id: 1, pump_start_delay_seconds: 6, main_valve_id: 1, zone_ids: [1,2,3,4,5], zone_names: ["Left","Mid-left","Mid-right","Right","Parking"], max_minutes: 20 },
+    { id: "Drip", enabled: false, description: "Irrigation for drip areas", pump_id: 2, pump_start_delay_seconds: 6, main_valve_id: 2, zone_ids: [6,7,8,9], zone_names: ["Trees","Flowers","Tomatoes","Herbs"], max_minutes: 480 }
+  ]
+};
+const APP_CONFIG = (() => {
+  try { const saved = localStorage.getItem('previewAppConfig'); if (saved) return JSON.parse(saved); } catch {}
+  return APP_CONFIG_DEFAULT;
+})();
+function persistAppConfig() { try { localStorage.setItem('previewAppConfig', JSON.stringify(APP_CONFIG)); } catch {} }
+const SCHEDULE_CONFIG = {
+  Grass: { enabled: true, suspendAboveTempEnabled: true, suspendAboveTemp: 34, suspendOnRainEnabled: true, suspendOnRainAbove: 2, schedules: [
+    { enabled: true, zones: [[1],[2]], durationMinutes: 30, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } },
+    { enabled: true, zones: [[3,4]], durationMinutes: 30, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: true, sunriseOffsetMinutes: 10 }, sunsetSchedule: { enabled: true, sunsetOffsetMinutes: 10 } }
+  ]},
+  Drip: { enabled: true, suspendAboveTempEnabled: false, suspendAboveTemp: 36, suspendOnRainEnabled: false, suspendOnRainAbove: 5, schedules: [
+    { enabled: true, zones: [[7],[9]], durationMinutes: 60, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } },
+    { enabled: true, zones: [[6,8]], durationMinutes: 90, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: true, sunriseOffsetMinutes: 10 }, sunsetSchedule: { enabled: true, sunsetOffsetMinutes: 10 } }
+  ]}
+};
+const MANUAL_CONFIG = {
+  Grass: { zones: [3,4], shuffle: true, durationMinutes: 20, delayedStart: "0m", presets: [
+    { name: "Morning quick", zones: [1,2], shuffle: false, durationMinutes: 10, delayedStart: "0m" },
+    { name: "Evening full",  zones: [1,2,3,4,5], shuffle: true, durationMinutes: 30, delayedStart: "1h" }
+  ]},
+  Drip:  { zones: [], shuffle: true, durationMinutes: 60, delayedStart: "0m", presets: [] }
+};
+
+const AREA_COLORS = ['#16a34a', '#2563eb', '#d97706', '#7c3aed', '#dc2626'];
+const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DELAY_PRESETS = ['0m','1m','5m','10m','20m','30m','1h','2h'];
+const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90];
+const WS_STATES = ['connected','reconnecting','disconnected'];
+
+function areaColor(i) { return AREA_COLORS[i % AREA_COLORS.length]; }
+
+// State
+const state = { activeTab: null, wsState: 'connected', eState: {}, eSource: {}, ePending: {} };
+APP_CONFIG.areas.forEach(a => { state.eState[a.id] = 'inactive'; state.eSource[a.id] = null; });
+state.eState['filling'] = 'inactive'; state.eSource['filling'] = null;
+
+// Helpers
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') el.className = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v);
+  }
+  for (const c of children.flat()) { if (c != null) el.append(typeof c === 'string' ? document.createTextNode(c) : c); }
+  return el;
+}
+function toggle(checked, onChange) {
+  const lbl = h('label', { class: 'toggle' });
+  const inp = h('input', { type: 'checkbox' }); inp.checked = checked;
+  if (onChange) inp.addEventListener('change', () => onChange(inp.checked));
+  lbl.append(inp, h('span', { class: 'toggle-slider' })); return lbl;
+}
+function field(label, ...ctrls) { return h('div', { class: 'field' }, h('span', { style: 'flex:1' }, label), ...ctrls); }
+function numInput(v) { return h('input', { type: 'number', value: String(v), style: 'width:160px;padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }); }
+function textInput(v, t='text') { return h('input', { type: t, value: v, style: 'width:160px;padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }); }
+function saveBar() { return h('div', { class: 'save-bar' }, h('button', { class: 'btn btn-primary' }, 'Save')); }
+function sectionEl(title, ...rows) { return h('div', { class: 'section' }, h('h2', {}, title), ...rows); }
+function sectionElToggle(title, enabled, onToggle, ...rows) {
+  const section = h('div', { class: 'section', style: enabled ? '' : 'opacity:0.55' });
+  const header = h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin:0 0 1rem;' },
+    h('h2', { style: 'margin:0;' }, title),
+    h('span', { style: 'display:flex;align-items:center;gap:0.5rem;' },
+      h('span', { style: 'font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:#888;font-weight:600;' }, 'Enabled'),
+      toggle(enabled, c => { section.style.opacity = c ? '' : '0.55'; if (onToggle) onToggle(c); })));
+  section.append(header, ...rows);
+  return section;
+}
+
+// Emergency bar
+const MOCK_ACTIVE_ZONES = { Grass: [1, 2], Drip: [7, 9] };
+const MOCK_REMAINING = { Grass: 935, Drip: 2640, filling: 245 }; // seconds
+const MOCK_GROUP_REMAINING = { Grass: 47, Drip: 0 }; // seconds
+function fmtRemaining(seconds) {
+  if (!seconds || seconds <= 0) return '';
+  if (seconds >= 60) return `${Math.ceil(seconds / 60)} min`;
+  return `${seconds} sec`;
+}
+const MOCK_WATER_LEVEL = 72;
+
+function waterLevelColor(level) {
+  if (level == null) return '#9ca3af';
+  if (level >= 60) return '#16a34a';
+  if (level >= 30) return '#f59e0b';
+  return '#dc2626';
+}
+
+// Emergency-bar pending tracking (mock: 800ms latency to "backend").
+state.ePending = state.ePending || {};
+const E_PENDING_MS = 800;
+function setEPending(target, action) {
+  state.ePending[target] = action;
+  refreshEBar();
+  setTimeout(() => {
+    if (action === 'stop') { state.eState[target] = 'inactive'; state.eSource[target] = null; }
+    else if (action === 'pause') { state.eState[target] = 'paused'; }
+    state.ePending[target] = null;
+    refreshEBar();
+    if (target !== 'filling') updaters[target]?.();
+    else updaters['filling']?.();
+  }, E_PENDING_MS);
+}
+
+function eClickPreview(target) {
+  if (state.ePending[target]) return;
+  const st = state.eState[target];
+  if (st === 'active') {
+    if (state.eSource[target] === 'manual') setEPending(target, 'stop');
+    else setEPending(target, 'pause');
+  } else if (st === 'paused') {
+    setEPending(target, 'stop');
+  }
+}
+
+function buildEmergencyBar() {
+  const bar = document.getElementById('emergency-bar');
+  bar.innerHTML = '';
+  if (APP_CONFIG.filling.enabled !== false) {
+    const battery = h('span', { class: 'battery', id: 'fill-battery', style: `--fill-pct:${MOCK_WATER_LEVEL}%;` },
+      h('span', { class: 'battery-cell' },
+        h('span', { class: 'battery-fill', id: 'fill-battery-fill' }),
+        h('span', { class: 'battery-rise' })
+      ),
+      h('span', { class: 'battery-nub' })
+    );
+    const pct = h('span', { class: 'battery-pct', id: 'fill-battery-pct' }, `${MOCK_WATER_LEVEL}%`);
+    const fillRemaining = h('span', { class: 'e-remaining', id: 'fill-remaining' }, '');
+    const btn = h('button', { class: 'emergency-btn e-inactive', id: 'ebtn-filling', title: `Filling — water level ${MOCK_WATER_LEVEL}%` },
+      h('span', { class: 'e-title e-title-battery' }, battery),
+      h('span', { class: 'e-state' }, pct, fillRemaining),
+      h('span', { class: 'e-action' }, '')
+    );
+    btn.addEventListener('click', () => eClickPreview('filling'));
+    bar.append(btn);
+  }
+  APP_CONFIG.areas.forEach((a, i) => {
+    if (a.enabled === false) return;
+    const stateSpan = h('span', { class: 'e-state', id: `estate-${a.id}` },
+      h('span', { class: 'e-remaining e-remaining-left', 'data-role': 'group' }, ''),
+      h('span', { class: 'e-state-text', 'data-role': 'state' }, 'Off'),
+      h('span', { class: 'e-remaining', 'data-role': 'total' }, '')
+    );
+    const btn = h('button', { class: 'emergency-btn e-inactive', id: `ebtn-${a.id}`, title: a.id },
+      h('span', { class: 'e-title' }, a.id[0], ' ', h('span', { class: 'e-zones', id: `ezones-${a.id}` })),
+      stateSpan,
+      h('span', { class: 'e-action' }, '')
+    );
+    btn.addEventListener('click', () => eClickPreview(a.id));
+    bar.append(btn);
+  });
+  refreshEBar();
+}
+
+function eStateLabelPreview(target) {
+  const st = state.eState[target];
+  if (st === 'active') return 'ON';
+  if (st === 'paused') return 'Paused for 60 min.';
+  return 'Off';
+}
+function eActionLabelPreview(target) {
+  const p = state.ePending[target];
+  if (p === 'stop') return 'Stopping…';
+  if (p === 'pause') return 'Pausing…';
+  const st = state.eState[target];
+  if (st === 'active') return state.eSource[target] === 'manual' ? 'STOP' : 'Pause 1h';
+  if (st === 'paused') return 'STOP';
+  return '';
+}
+
+function refreshEBar() {
+  if (typeof refreshNavDots === 'function') refreshNavDots();
+  APP_CONFIG.areas.forEach((a, i) => {
+    const btn = document.getElementById(`ebtn-${a.id}`);
+    const zonesEl = document.getElementById(`ezones-${a.id}`);
+    if (!btn) return;
+    const st = state.eState[a.id];
+    const color = areaColor(i);
+    const pending = state.ePending[a.id];
+    btn.className = `emergency-btn e-${st}`;
+    btn.disabled = !pending && st === 'inactive' ? true : !!pending;
+    btn.style.background = (st !== 'inactive' || pending) ? color : '';
+    btn.querySelector('[data-role="state"]').textContent = eStateLabelPreview(a.id);
+    btn.querySelector('.e-action').textContent = eActionLabelPreview(a.id);
+    const totalEl = btn.querySelector('[data-role="total"]');
+    const groupEl = btn.querySelector('[data-role="group"]');
+    if (st === 'active') {
+      totalEl.textContent = fmtRemaining(MOCK_REMAINING[a.id] ?? 0);
+      groupEl.textContent = fmtRemaining(MOCK_GROUP_REMAINING[a.id] ?? 0);
+      groupEl.style.display = groupEl.textContent ? '' : 'none';
+    } else if (st === 'paused') {
+      totalEl.textContent = '60 min';
+      groupEl.textContent = '';
+      groupEl.style.display = 'none';
+    } else {
+      totalEl.textContent = '';
+      groupEl.textContent = '';
+      groupEl.style.display = 'none';
+    }
+    const zones = st === 'active' ? (MOCK_ACTIVE_ZONES[a.id] ?? []) : [];
+    if (zonesEl) {
+      zonesEl.innerHTML = '';
+      // Mock: treat first zone as active group (index 0).
+      const activeGrpIdx = st === 'active' ? 0 : -1;
+      zones.forEach((z, zi) => {
+        if (zi > 0) zonesEl.append(' ');
+        const s = document.createElement('span');
+        s.textContent = String(z);
+        if (zi === activeGrpIdx) s.className = 'e-zone-active';
+        zonesEl.append(s);
+      });
+    }
+  });
+  const fBtn = document.getElementById('ebtn-filling');
+  if (fBtn) {
+    const st = state.eState['filling'];
+    const pending = state.ePending['filling'];
+    fBtn.className = `emergency-btn e-${st}`;
+    fBtn.disabled = !pending && st === 'inactive' ? true : !!pending;
+    fBtn.style.background = (st !== 'inactive' || pending) ? '#fb923c' : '';
+    fBtn.querySelector('.e-action').textContent = eActionLabelPreview('filling');
+    const fillRem = document.getElementById('fill-remaining');
+    if (fillRem) fillRem.textContent = st === 'active' ? fmtRemaining(MOCK_REMAINING.filling) : (st === 'paused' ? '60 min' : '');
+    const battery = document.getElementById('fill-battery');
+    const pct = document.getElementById('fill-battery-pct');
+    if (battery) {
+      const lvl = Math.max(0, Math.min(100, MOCK_WATER_LEVEL));
+      battery.style.setProperty('--fill-pct', `${lvl}%`);
+      battery.classList.toggle('filling', st === 'active');
+      if (pct) pct.textContent = `${MOCK_WATER_LEVEL}%`;
+    }
+  }
+  if (state.manualBtnUpdaters) Object.values(state.manualBtnUpdaters).forEach(fn => fn());
+}
+
+function buildDurationField(val, onChange) {
+  const inp = numInput(val); inp.style.width = '60px';
+  const btns = DURATION_PRESETS.map(d => {
+    const b = h('button', { class: `btn btn-sm ${d === val ? 'btn-primary' : 'btn-secondary'}` }, String(d));
+    b.addEventListener('click', () => { inp.value = d; btns.forEach(x => { x.className = `btn btn-sm ${x.textContent == d ? 'btn-primary' : 'btn-secondary'}`; }); if (onChange) onChange(d); });
+    return b;
+  });
+  inp.addEventListener('input', () => { btns.forEach(x => { x.className = `btn btn-sm ${x.textContent == inp.value ? 'btn-primary' : 'btn-secondary'}`; }); if (onChange) onChange(Number(inp.value)); });
+  return h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' }, h('span', {}, 'Duration (min)'), h('div', { class: 'preset-row', style: 'margin-top:0;' }, ...btns, inp));
+}
+
+// Manual Control tab (all areas + filling)
+function buildManualTab() {
+  const updaters = {};
+  state.manualBtnUpdaters = updaters;
+
+  function normalizeGroups(zones) {
+    if (!Array.isArray(zones) || zones.length === 0) return [];
+    if (Array.isArray(zones[0])) return zones.map(g => g.map(Number));
+    return zones.map(z => [Number(z)]);
+  }
+  const cards = APP_CONFIG.areas.map((area, idx) => {
+    const mc = MANUAL_CONFIG[area.id] ?? { zones: [], shuffle: false, durationMinutes: 30, delayedStart: '0m', presets: [] };
+    if (!Array.isArray(mc.presets)) mc.presets = [];
+    let groups = normalizeGroups(mc.zones);
+    let currentDuration = mc.durationMinutes;
+    const areaColor = AREA_COLORS[idx % AREA_COLORS.length];
+    const startBtn = h('button', { class: 'btn', style: 'color:#fff;min-width:6rem;' }, 'Start');
+    const STOP_GRACE_MS = 5000;
+    let stopTimer = null;
+
+    let currentGroupIdx = 0;
+    const groupChipsBox = h('div', { style: 'display:flex;flex-wrap:wrap;gap:0.3rem;align-items:center;flex:1;' });
+    const navBox = h('span', { style: 'display:inline-flex;gap:0.2rem;margin-right:1rem;' });
+    const zoneBox = h('div', { style: 'display:flex;flex-wrap:wrap;gap:0.3rem;' });
+    const delBtn = h('button', { class: 'btn btn-sm btn-danger', title: 'Remove current group' }, '✕');
+    const addBtn = h('button', { class: 'btn btn-sm btn-primary', title: 'Add new group' }, '+');
+    navBox.append(delBtn, addBtn);
+
+    function checkEmptyStop() {
+      const running = (state.eState[area.id] ?? 'inactive') === 'active';
+      if (running && groups.length === 0) {
+        if (!stopTimer) stopTimer = setTimeout(() => {
+          stopTimer = null;
+          if (groups.length === 0) { state.eState[area.id] = 'inactive'; state.eSource[area.id] = null; updateBtn(); refreshEBar(); }
+        }, STOP_GRACE_MS);
+      } else if (stopTimer) { clearTimeout(stopTimer); stopTimer = null; }
+    }
+    let dragSrcIdx = null;
+    function renderGroups() {
+      groupChipsBox.innerHTML = '';
+      groupChipsBox.append(navBox);
+      const activeZones = (state.eState[area.id] === 'active') ? (MOCK_ACTIVE_ZONES[area.id] ?? []) : [];
+      const activeKey = activeZones.length ? [...activeZones].map(Number).sort((a, b) => a - b).join(',') : null;
+      groups.forEach((g, gi) => {
+        const gKey = [...g].map(Number).sort((a, b) => a - b).join(',');
+        const isFiring = activeKey != null && gKey === activeKey;
+        const b = h('button', {
+          class: `btn btn-sm ${gi === currentGroupIdx ? 'btn-primary' : 'btn-secondary'}${isFiring ? ' active-group' : ''}`,
+          style: 'font-family:monospace;min-width:2rem;cursor:grab;',
+          title: isFiring ? `Group ${gi + 1} — currently firing` : `Group ${gi + 1} — drag to reorder`,
+          draggable: 'true'
+        }, g.join('') || '·');
+        b.addEventListener('click', () => { currentGroupIdx = gi; renderGroups(); renderZones(); });
+        b.addEventListener('dragstart', (e) => {
+          dragSrcIdx = gi;
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', String(gi));
+        });
+        b.addEventListener('dragover', (e) => {
+          if (dragSrcIdx == null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        });
+        b.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const src = dragSrcIdx;
+          dragSrcIdx = null;
+          if (src == null || src === gi) return;
+          const arr = [...groups];
+          const [moved] = arr.splice(src, 1);
+          arr.splice(gi, 0, moved);
+          groups = arr;
+          if (currentGroupIdx === src) currentGroupIdx = gi;
+          else if (src < currentGroupIdx && gi >= currentGroupIdx) currentGroupIdx -= 1;
+          else if (src > currentGroupIdx && gi <= currentGroupIdx) currentGroupIdx += 1;
+          renderGroups(); renderZones();
+        });
+        b.addEventListener('dragend', () => { dragSrcIdx = null; });
+        groupChipsBox.append(b);
+      });
+      delBtn.disabled = groups.length === 0;
+    }
+    function renderZones() {
+      zoneBox.innerHTML = '';
+      const cur = groups[currentGroupIdx] ?? [];
+      area.zone_ids.forEach((z, zi) => {
+        const inGroup = cur.includes(z);
+        const b = h('button', {
+          class: `btn btn-sm ${inGroup ? 'btn-primary' : 'btn-secondary'}`,
+          title: `Toggle zone ${z}`
+        }, h('b', {}, String(z)), ' ' + (area.zone_names[zi] ?? ''));
+        b.disabled = groups.length === 0;
+        b.addEventListener('click', () => {
+          if (groups.length === 0) return;
+          const g = [...(groups[currentGroupIdx] ?? [])];
+          const idx = g.indexOf(z);
+          if (idx >= 0) g.splice(idx, 1);
+          else { g.push(z); g.sort((a, b) => a - b); }
+          groups = groups.map((og, i) => i === currentGroupIdx ? g : og);
+          renderGroups(); renderZones(); updateBtn();
+        });
+        zoneBox.append(b);
+      });
+    }
+    delBtn.addEventListener('click', () => {
+      if (groups.length === 0) return;
+      groups = groups.filter((_, i) => i !== currentGroupIdx);
+      currentGroupIdx = Math.max(0, Math.min(currentGroupIdx, groups.length - 1));
+      renderGroups(); renderZones(); checkEmptyStop(); updateBtn();
+    });
+    addBtn.addEventListener('click', () => {
+      groups = [...groups, []];
+      currentGroupIdx = groups.length - 1;
+      renderGroups(); renderZones(); checkEmptyStop(); updateBtn();
+    });
+    renderGroups(); renderZones();
+
+    let prevRunningPreview = false;
+    let pendingAction = null;  // 'start' | 'stop' | null
+    const updateBtn = () => {
+      const st = state.eState[area.id] ?? 'inactive';
+      const manualActive = st === 'active' && state.eSource[area.id] === 'manual';
+      const paused = st === 'paused';
+      const running = st === 'active';
+      if (prevRunningPreview && !running && shuffleInp?.checked && groups.length > 1) {
+        prevRunningPreview = running;
+        runShuffle(false);
+        return;
+      }
+      prevRunningPreview = running;
+      if (pendingAction === 'start') {
+        startBtn.textContent = 'Starting…'; startBtn.style.background = areaColor; startBtn.disabled = true; startBtn.title = '';
+      } else if (pendingAction === 'stop') {
+        startBtn.textContent = 'Stopping…'; startBtn.style.background = '#ef4444'; startBtn.disabled = true; startBtn.title = '';
+      } else if (manualActive) {
+        startBtn.textContent = 'Stop'; startBtn.style.background = '#ef4444'; startBtn.disabled = false; startBtn.title = '';
+      } else {
+        startBtn.textContent = 'Start'; startBtn.style.background = areaColor;
+        const noZones = groups.length === 0;
+        const noDuration = !currentDuration || currentDuration <= 0;
+        startBtn.disabled = noZones || noDuration || paused;
+        startBtn.title = paused ? 'Paused by schedule' : noZones ? 'No zones selected' : noDuration ? 'Duration must be > 0' : '';
+      }
+    };
+    updaters[area.id] = () => { updateBtn(); renderGroups(); };
+    updateBtn();
+    function pruneEmptyGroups() {
+      const cleaned = groups.filter(g => g.length > 0);
+      if (cleaned.length === groups.length) return;
+      const wasGroup = groups[currentGroupIdx];
+      const newCur = wasGroup && wasGroup.length > 0
+        ? cleaned.indexOf(wasGroup)
+        : Math.max(0, Math.min(currentGroupIdx, cleaned.length - 1));
+      groups = cleaned;
+      currentGroupIdx = newCur >= 0 ? newCur : 0;
+      renderGroups(); renderZones();
+    }
+    startBtn.addEventListener('click', () => {
+      if (pendingAction) return;
+      const st = state.eState[area.id] ?? 'inactive';
+      const manualActive = st === 'active' && state.eSource[area.id] === 'manual';
+      pendingAction = manualActive ? 'stop' : 'start';
+      if (!manualActive) pruneEmptyGroups();
+      updateBtn();
+      // Mock backend latency: 800ms before "confirmation".
+      setTimeout(() => {
+        if (manualActive) { state.eState[area.id] = 'inactive'; state.eSource[area.id] = null; }
+        else { state.eState[area.id] = 'active'; state.eSource[area.id] = 'manual'; }
+        pendingAction = null;
+        updateBtn();
+        refreshEBar();
+      }, 800);
+    });
+    let shuffleInp;
+    const shuffleLbl = h('label', { class: 'toggle' });
+    shuffleInp = h('input', { type: 'checkbox' }); shuffleInp.checked = mc.shuffle;
+    shuffleLbl.append(shuffleInp, h('span', { class: 'toggle-slider' }));
+    function shuffleArr(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+    // Preview uses currentGroupIdx as the active group cursor while running.
+    function runShuffle(keepActive) {
+      pruneEmptyGroups();
+      if (groups.length <= 1) return;
+      const arr = groups.map(g => [...g]);
+      if (keepActive && currentGroupIdx >= 0 && currentGroupIdx < arr.length) {
+        const activeIdx = currentGroupIdx;
+        const [active] = arr.splice(activeIdx, 1);
+        shuffleArr(arr);
+        const slots = [];
+        for (let i = 0; i <= arr.length; i++) if (i !== activeIdx) slots.push(i);
+        const newIdx = slots.length > 0
+          ? slots[Math.floor(Math.random() * slots.length)]
+          : 0;
+        arr.splice(newIdx, 0, active);
+        groups = arr;
+        currentGroupIdx = newIdx;
+      } else {
+        shuffleArr(arr);
+        groups = arr;
+        currentGroupIdx = 0;
+      }
+      renderGroups(); renderZones();
+      updateBtn();
+    }
+    const shuffleNowBtn = h('button', { class: 'btn btn-sm btn-primary', title: 'Randomize group sequence order' }, 'Shuffle now');
+    shuffleNowBtn.addEventListener('click', () => {
+      const running = (state.eState[area.id] ?? 'inactive') === 'active';
+      runShuffle(running);
+    });
+    const shuffleHeaderGroup = h('span', { style: 'display:inline-flex;align-items:center;gap:0.3rem;font-size:0.8rem;' },
+      h('span', {}, 'Zone Shuffle on Stop'), shuffleLbl);
+
+    const durationInp = numInput(mc.durationMinutes); durationInp.style.width = '60px';
+    const durationBtns = DURATION_PRESETS.map(d => {
+      const b = h('button', { class: `btn btn-sm ${d === mc.durationMinutes ? 'btn-primary' : 'btn-secondary'}` }, String(d));
+      b.addEventListener('click', () => { durationInp.value = d; refreshDurationBtns(); currentDuration = d; updateBtn(); });
+      return b;
+    });
+    function refreshDurationBtns() { durationBtns.forEach(x => { x.className = `btn btn-sm ${x.textContent == durationInp.value ? 'btn-primary' : 'btn-secondary'}`; }); }
+    durationInp.addEventListener('input', () => { refreshDurationBtns(); currentDuration = Number(durationInp.value); updateBtn(); });
+    const durationField = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' }, h('span', {}, 'Duration per zone group (min)'), h('div', { class: 'preset-row', style: 'margin-top:0;' }, ...durationBtns, durationInp));
+
+    const delayInput = textInput(mc.delayedStart); delayInput.style.width = '70px';
+    const delayBtns = DELAY_PRESETS.map(p => {
+      const b = h('button', { class: `btn btn-sm ${p === mc.delayedStart ? 'btn-primary' : 'btn-secondary'}` }, p);
+      b.addEventListener('click', () => { delayInput.value = p; refreshDelayBtns(); });
+      return b;
+    });
+    function refreshDelayBtns() { delayBtns.forEach(x => { x.className = `btn btn-sm ${x.textContent === delayInput.value ? 'btn-primary' : 'btn-secondary'}`; }); }
+    delayInput.addEventListener('input', refreshDelayBtns);
+
+    function applyPreset(p) {
+      groups = normalizeGroups(p.zones ?? []);
+      currentGroupIdx = 0;
+      renderGroups(); renderZones();
+      shuffleInp.checked = !!p.shuffle;
+      durationInp.value = p.durationMinutes; currentDuration = p.durationMinutes; refreshDurationBtns();
+      delayInput.value = p.delayedStart; refreshDelayBtns();
+      updateBtn();
+    }
+    function snapshot(name) {
+      return { name, zones: groups.map(g => [...g]), shuffle: shuffleInp.checked, durationMinutes: Number(durationInp.value), delayedStart: delayInput.value };
+    }
+    const presetRow = h('div', { class: 'preset-row', style: 'margin-top:0;' });
+    function renderPresets() {
+      presetRow.innerHTML = '';
+      mc.presets.forEach(p => {
+        const wrap = h('span', { style: 'display:inline-flex;align-items:center;border:1px solid #d1d5db;border-radius:5px;overflow:hidden;' });
+        const load = h('button', { class: 'btn btn-sm btn-secondary', style: 'border-radius:0;', title: 'Load preset' }, p.name);
+        load.addEventListener('click', () => applyPreset(p));
+        const over = h('button', { class: 'btn btn-sm btn-secondary', style: 'border-radius:0;border-left:1px solid #4b5563;padding:0.2rem 0.4rem;', title: 'Overwrite with current values' }, '↻');
+        over.addEventListener('click', () => {
+          if (!confirm(`Overwrite preset "${p.name}" with current values?`)) return;
+          const idx = mc.presets.findIndex(x => x.name === p.name);
+          if (idx >= 0) { mc.presets[idx] = snapshot(p.name); renderPresets(); }
+        });
+        const ren = h('button', { class: 'btn btn-sm btn-secondary', style: 'border-radius:0;border-left:1px solid #4b5563;padding:0.2rem 0.4rem;', title: 'Rename preset' }, '✎');
+        ren.addEventListener('click', () => {
+          const raw = prompt('Rename preset:', p.name);
+          if (raw == null) return;
+          const name = raw.trim();
+          if (!name || name === p.name) return;
+          if (mc.presets.some(x => x.name === name)) { alert(`Preset "${name}" already exists`); return; }
+          const idx = mc.presets.findIndex(x => x.name === p.name);
+          if (idx >= 0) { mc.presets[idx] = { ...mc.presets[idx], name }; renderPresets(); }
+        });
+        const del = h('button', { class: 'btn btn-sm btn-danger', style: 'border-radius:0;padding:0.2rem 0.4rem;', title: 'Delete preset' }, '✕');
+        del.addEventListener('click', () => {
+          if (!confirm(`Delete preset "${p.name}"?`)) return;
+          mc.presets = mc.presets.filter(x => x.name !== p.name); renderPresets();
+        });
+        wrap.append(load, over, ren, del);
+        presetRow.append(wrap);
+      });
+      const addBtn = h('button', { class: 'btn btn-sm btn-primary', title: 'Save current values as new preset' }, '+ Save as preset');
+      addBtn.addEventListener('click', () => {
+        const raw = prompt('Preset name:');
+        if (raw == null) return;
+        const name = raw.trim();
+        if (!name) return;
+        const idx = mc.presets.findIndex(x => x.name === name);
+        if (idx >= 0) {
+          if (!confirm(`Overwrite existing preset "${name}"?`)) return;
+          mc.presets[idx] = snapshot(name);
+        } else {
+          mc.presets.push(snapshot(name));
+        }
+        renderPresets();
+      });
+      presetRow.append(addBtn);
+    }
+    renderPresets();
+
+    const cardHeader = h('div', { class: 'card-header', style: 'justify-content:flex-start;gap:0.5rem;flex-wrap:wrap;' }, h('h3', {}, area.id), startBtn, presetRow);
+    presetRow.style.display = 'inline-flex';
+    presetRow.style.flexWrap = 'wrap';
+    presetRow.style.gap = '0.3rem';
+    presetRow.style.alignItems = 'center';
+    presetRow.style.marginLeft = 'auto';
+    presetRow.style.justifyContent = 'flex-end';
+    return h('div', { class: `card${area.enabled === false ? ' content-disabled' : ''}`, style: `--area-color:${areaColor};border-color:var(--area-color);border-width:2px;` },
+      cardHeader,
+      h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:flex-start;' },
+        h('span', {}, 'Zones in group'),
+        zoneBox,
+        h('span', { style: 'margin-left:auto;display:inline-flex;align-items:center;gap:0.5rem;' }, shuffleHeaderGroup, shuffleNowBtn)
+      ),
+      h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;align-items:center;' }, h('span', {}, 'Sequence'), groupChipsBox),
+      durationField,
+      h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' }, h('span', {}, 'Delayed Start'), h('div', { class: 'preset-row', style: 'margin-top:0;' }, ...delayBtns, delayInput))
+    );
+  });
+
+  // Filling card
+  const f = APP_CONFIG.filling;
+  const fBtn = h('button', { class: 'btn', style: 'color:#fff;min-width:6rem;' }, 'Start');
+  let fillingPending = null;
+  function updateFBtn() {
+    const st = state.eState['filling'] ?? 'inactive';
+    const manualActive = st === 'active' && state.eSource['filling'] === 'manual';
+    const paused = st === 'paused';
+    if (fillingPending === 'start') { fBtn.textContent = 'Starting…'; fBtn.style.background = '#fb923c'; fBtn.disabled = true; fBtn.title = ''; }
+    else if (fillingPending === 'stop') { fBtn.textContent = 'Stopping…'; fBtn.style.background = '#ef4444'; fBtn.disabled = true; fBtn.title = ''; }
+    else if (manualActive) { fBtn.textContent = 'Stop'; fBtn.style.background = '#ef4444'; fBtn.disabled = false; fBtn.title = ''; }
+    else { fBtn.textContent = 'Start'; fBtn.style.background = '#fb923c'; fBtn.disabled = paused; fBtn.title = paused ? 'Paused by schedule' : ''; }
+  }
+  updaters['filling'] = updateFBtn;
+  updateFBtn();
+  fBtn.addEventListener('click', () => {
+    if (fillingPending) return;
+    const st = state.eState['filling'] ?? 'inactive';
+    const manualActive = st === 'active' && state.eSource['filling'] === 'manual';
+    fillingPending = manualActive ? 'stop' : 'start';
+    updateFBtn();
+    setTimeout(() => {
+      if (manualActive) { state.eState['filling'] = 'inactive'; state.eSource['filling'] = null; }
+      else { state.eState['filling'] = 'active'; state.eSource['filling'] = 'manual'; }
+      fillingPending = null;
+      updateFBtn();
+      refreshEBar();
+    }, 800);
+  });
+  const fillingCard = h('div', { class: `card${APP_CONFIG.filling.enabled === false ? ' content-disabled' : ''}`, style: '--area-color:#fb923c;border-color:var(--area-color);border-width:2px;padding:0.5rem 1rem;' },
+    h('div', { style: 'display:flex;align-items:center;gap:1rem;flex-wrap:wrap;' },
+      h('h3', { style: 'margin:0;' }, 'Filling'),
+      fBtn,
+      h('span', { style: 'margin-left:auto;display:flex;gap:1rem;align-items:center;' },
+        h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, `Pump ${f.pump_id}`), h('span', { class: 'status-value status-off' }, 'OFF')),
+        h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, 'Water'), h('span', { class: 'status-value' }, '72%'))))
+  );
+
+  return h('div', {}, fillingCard, ...cards);
+}
+
+// Schedule tab (per area, schedule only)
+function buildScheduleTab(area, idx) {
+  const color = AREA_COLORS[(idx ?? 0) % AREA_COLORS.length];
+  const sched = SCHEDULE_CONFIG[area.id] ?? { enabled: true, suspendAboveTempEnabled: false, suspendAboveTemp: 35, suspendOnRainEnabled: false, suspendOnRainAbove: 2, schedules: [] };
+  const suspInput = numInput(sched.suspendAboveTemp); suspInput.style.width = '55px'; suspInput.disabled = !sched.suspendAboveTempEnabled;
+  const rainInput = numInput(sched.suspendOnRainAbove); rainInput.style.width = '55px'; rainInput.disabled = !sched.suspendOnRainEnabled;
+  const schedContent = h('div', {},
+    ...sched.schedules.map((s, i) => buildScheduleCard(s, i, area)),
+    h('button', { class: 'btn btn-secondary' }, '+ Add Schedule')
+  );
+  const suspSpan = h('span', { style: 'display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;' },
+    h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' },
+      'Suspend above ', suspInput, ' °C ', toggle(sched.suspendAboveTempEnabled, c => { suspInput.disabled = !c; })),
+    h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' },
+      'Suspend on rain above ', rainInput, ' L/m² ', toggle(sched.suspendOnRainEnabled, c => { rainInput.disabled = !c; })));
+  const headerRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.4rem;' },
+    h('span', {}, `${area.id} Schedules enabled`),
+    toggle(sched.enabled, c => { schedContent.classList.toggle('content-disabled', !c); suspSpan.classList.toggle('field-disabled', !c); }),
+    suspSpan);
+
+  return h('div', { style: `--area-color:${color};` },
+    headerRow,
+    schedContent,
+    h('div', { class: 'save-bar', style: 'justify-content:space-between;' },
+      h('button', { class: 'btn btn-secondary' }, '+ Add Schedule'),
+      h('button', { class: 'btn btn-primary' }, 'Save')));
+}
+
+function normalizeSchedZones(zones) {
+  if (!Array.isArray(zones) || zones.length === 0) return [];
+  if (Array.isArray(zones[0])) return zones.map(g => g.map(Number));
+  return zones.map(z => [Number(z)]);
+}
+
+function buildScheduleCard(sched, index, area) {
+  const card = h('div', { class: 'card', style: sched.enabled ? '' : 'opacity:0.65' });
+  const enableToggle = toggle(sched.enabled, c => { card.style.opacity = c ? '' : '0.65'; });
+
+  let groups = normalizeSchedZones(sched.zones);
+  let currentGroupIdx = 0;
+  let dragSrcIdx = null;
+
+  const zoneBox = h('div', { style: 'display:flex;flex-wrap:wrap;gap:0.3rem;' });
+  const groupChipsBox = h('div', { style: 'display:flex;flex-wrap:wrap;gap:0.3rem;align-items:center;flex:1;' });
+  const navBox = h('span', { style: 'display:inline-flex;gap:0.2rem;margin-right:1rem;' });
+  const delBtn = h('button', { class: 'btn btn-sm btn-danger', title: 'Remove current group' }, '✕');
+  const addBtn = h('button', { class: 'btn btn-sm btn-primary', title: 'Add new group' }, '+');
+  navBox.append(delBtn, addBtn);
+
+  function syncZones() { sched.zones = groups.map(g => [...g]); }
+  function renderGroups() {
+    groupChipsBox.innerHTML = '';
+    groupChipsBox.append(navBox);
+    groups.forEach((g, gi) => {
+      const b = h('button', {
+        class: `btn btn-sm ${gi === currentGroupIdx ? 'btn-primary' : 'btn-secondary'}`,
+        style: 'font-family:monospace;min-width:2rem;cursor:grab;',
+        title: `Group ${gi + 1} — drag to reorder`,
+        draggable: 'true'
+      }, g.join('') || '·');
+      b.addEventListener('click', () => { currentGroupIdx = gi; renderGroups(); renderZones(); });
+      b.addEventListener('dragstart', (e) => {
+        dragSrcIdx = gi;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(gi));
+      });
+      b.addEventListener('dragover', (e) => {
+        if (dragSrcIdx == null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      });
+      b.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const src = dragSrcIdx;
+        dragSrcIdx = null;
+        if (src == null || src === gi) return;
+        const arr = [...groups];
+        const [moved] = arr.splice(src, 1);
+        arr.splice(gi, 0, moved);
+        groups = arr;
+        if (currentGroupIdx === src) currentGroupIdx = gi;
+        else if (src < currentGroupIdx && gi >= currentGroupIdx) currentGroupIdx -= 1;
+        else if (src > currentGroupIdx && gi <= currentGroupIdx) currentGroupIdx += 1;
+        syncZones();
+        renderGroups(); renderZones();
+      });
+      b.addEventListener('dragend', () => { dragSrcIdx = null; });
+      groupChipsBox.append(b);
+    });
+    delBtn.disabled = groups.length === 0;
+  }
+  function renderZones() {
+    zoneBox.innerHTML = '';
+    const cur = groups[currentGroupIdx] ?? [];
+    area.zone_ids.forEach((z, zi) => {
+      const inGroup = cur.includes(z);
+      const b = h('button', {
+        class: `btn btn-sm ${inGroup ? 'btn-primary' : 'btn-secondary'}`,
+        title: `Toggle zone ${z}`
+      }, h('b', {}, String(z)), ' ' + (area.zone_names[zi] ?? ''));
+      b.disabled = groups.length === 0;
+      b.addEventListener('click', () => {
+        if (groups.length === 0) return;
+        const g = [...(groups[currentGroupIdx] ?? [])];
+        const idx = g.indexOf(z);
+        if (idx >= 0) g.splice(idx, 1);
+        else { g.push(z); g.sort((a, b) => a - b); }
+        groups = groups.map((og, i) => i === currentGroupIdx ? g : og);
+        syncZones();
+        renderGroups(); renderZones();
+      });
+      zoneBox.append(b);
+    });
+  }
+  delBtn.addEventListener('click', () => {
+    if (groups.length === 0) return;
+    groups = groups.filter((_, i) => i !== currentGroupIdx);
+    currentGroupIdx = Math.max(0, Math.min(currentGroupIdx, groups.length - 1));
+    syncZones();
+    renderGroups(); renderZones();
+  });
+  addBtn.addEventListener('click', () => {
+    groups = [...groups, []];
+    currentGroupIdx = groups.length - 1;
+    syncZones();
+    renderGroups(); renderZones();
+  });
+  renderGroups(); renderZones();
+
+  const dayChecks = h('div', { class: 'days' }, ...DAY_LABELS.map((l, di) => {
+    const inp = h('input', { type: 'checkbox' }); inp.checked = sched.daysOfWeek.includes(di + 1);
+    return h('label', {}, inp, ' ' + l);
+  }));
+  const timeList = h('div', { class: 'time-list' },
+    ...sched.startTimes.map(t => h('div', { class: 'time-row' },
+      h('input', { type: 'time', value: t, style: 'padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }),
+      h('button', { class: 'btn btn-danger btn-sm' }, '✕'))),
+    h('button', { class: 'btn btn-secondary btn-sm' }, '+ Add time'));
+  const srOff = numInput(sched.sunriseSchedule.sunriseOffsetMinutes); srOff.style.width = '55px'; srOff.disabled = !sched.sunriseSchedule.enabled;
+  const ssOff = numInput(sched.sunsetSchedule.sunsetOffsetMinutes); ssOff.style.width = '55px'; ssOff.disabled = !sched.sunsetSchedule.enabled;
+  card.append(
+    h('div', { class: 'card-header' },
+      h('div', { style: 'display:flex;align-items:center;gap:0.5rem;' }, h('h3', { style: 'margin:0;' }, `${area.id} Schedule ${index+1}`), enableToggle),
+      h('button', { class: 'btn btn-danger' }, 'Delete')),
+    h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:flex-start;' }, h('span', {}, 'Zones in group'), zoneBox),
+    h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;align-items:center;' }, h('span', {}, 'Sequence'), groupChipsBox),
+    buildDurationField(sched.durationMinutes),
+    h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' }, h('span', {}, 'Days of Week'), dayChecks),
+    h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' }, h('span', {}, 'Start Times'), timeList),
+    h('div', { class: 'field', style: 'flex-wrap:wrap;gap:1.5rem;' },
+      h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' },
+        'Start ', srOff, ' min. after sunrise ', toggle(sched.sunriseSchedule.enabled, c => { srOff.disabled = !c; })),
+      h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' },
+        'Start ', ssOff, ' min. after sunset ', toggle(sched.sunsetSchedule.enabled, c => { ssOff.disabled = !c; })))
+  );
+  return card;
+}
+
+// Settings tab
+function buildSettingsTab() {
+  const f = APP_CONFIG.filling;
+  const areasSections = APP_CONFIG.areas.map(area => {
+    const zoneList = h('div', { style: 'display:flex;flex-direction:column;gap:0.3rem;width:100%;' },
+      ...area.zone_ids.map((z, zi) => {
+        const idIn = numInput(z); idIn.style.width = '45px';
+        return h('div', { style: 'display:flex;gap:0.5rem;align-items:center;' },
+          idIn, textInput(area.zone_names[zi] ?? ''), h('button', { class: 'btn btn-danger btn-sm' }, '✕'));
+      }),
+      h('button', { class: 'btn btn-secondary btn-sm', style: 'margin-top:0.25rem;' }, '+ Add zone'));
+    const descIn = textInput(area.description); descIn.style.flex = '1'; descIn.style.minWidth = '200px'; descIn.style.width = 'auto';
+    return sectionElToggle(area.id, area.enabled, c => { area.enabled = c; persistAppConfig(); location.reload(); },
+      field('Description', descIn),
+      field('Pump ID', numInput(area.pump_id)), field('Pump Start Delay (s)', numInput(area.pump_start_delay_seconds)),
+      field('Main Valve ID', numInput(area.main_valve_id)),
+      field('Max Minutes', numInput(area.max_minutes)),
+      h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' }, h('span', {}, 'Zones (ID / Name)'), zoneList));
+  });
+  return h('div', {},
+    sectionEl('Device', field('Device Name', textInput(APP_CONFIG.device_name))),
+    sectionEl('WiFi', field('SSID', textInput(APP_CONFIG.wifi_ssid)), field('Password', textInput(APP_CONFIG.wifi_password, 'password'))),
+    sectionElToggle('Filling', f.enabled, c => { f.enabled = c; persistAppConfig(); location.reload(); }, field('Max Minutes', numInput(f.max_minutes)),
+      field('Pump ID', numInput(f.pump_id)), field('Level Filtering (s)', numInput(f.level_filtering_seconds)),
+      field('Leakage Threshold', numInput(f.leakage_detector_threshold)),
+      field('High Level Pressure', numInput(f.high_level_pressure)), field('Low Level Pressure', numInput(f.low_level_pressure))),
+    ...areasSections, saveBar());
+}
+
+function buildFirmwareTab() {
+  return sectionEl('Firmware', h('div', { style: 'display:flex;align-items:center;justify-content:center;height:200px;color:#9ca3af;font-size:0.9rem;' },
+    'Firmware OTA page loads from /update when connected to device'));
+}
+
+// Navigation
+const tabDefs = [
+  { id: 'manual', label: 'Manual Control', build: buildManualTab },
+  ...APP_CONFIG.areas.filter(a => a.enabled !== false).map((a, idx) => ({ id: a.id, label: a.id, color: AREA_COLORS[idx % AREA_COLORS.length], build: () => buildScheduleTab(a, idx) })),
+  { id: 'settings', label: 'Settings', build: buildSettingsTab },
+  { id: 'firmware', label: 'Firmware', build: buildFirmwareTab }
+];
+
+const panelCache = {};
+function getPanel(id) {
+  if (!panelCache[id]) {
+    const def = tabDefs.find(t => t.id === id);
+    const p = h('div', { class: 'tab-panel', id: `tab-${id}` });
+    p.append(def.build());
+    panelCache[id] = p;
+    document.getElementById('tab-content').append(p);
+  }
+  return panelCache[id];
+}
+function showTab(id) {
+  state.activeTab = id;
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#main-nav button[data-tab]').forEach(b => {
+    const isActive = b.dataset.tab === id;
+    b.classList.toggle('active', isActive);
+    const c = b.dataset.color;
+    if (c) b.style.borderBottomColor = isActive ? c : '';
+  });
+  getPanel(id).classList.add('active');
+}
+
+function buildNav() {
+  const nav = document.getElementById('main-nav');
+  const fmtT = ms => new Date(ms).toLocaleTimeString();
+  const startedAt = Date.now();
+  const wsDot = h('img', { src: 'ui/src/assets/ws-icon.png', alt: 'WebSocket', class: 'ws-icon ws-connected', id: 'ws-dot', title: `Connected since ${fmtT(startedAt)}.` });
+  let hasEverDisconnected = false;
+  let lastDisconnectAt = 0;
+  let mockError = '';
+  wsDot.addEventListener('click', () => {
+    const idx = (WS_STATES.indexOf(state.wsState) + 1) % WS_STATES.length;
+    state.wsState = WS_STATES[idx];
+    wsDot.className = `ws-icon ws-${state.wsState}`;
+    let tip;
+    if (state.wsState === 'connected') {
+      tip = hasEverDisconnected ? `Reconnected at ${fmtT(Date.now())}.` : `Connected since ${fmtT(startedAt)}.`;
+      mockError = '';
+    } else {
+      hasEverDisconnected = true;
+      lastDisconnectAt = Date.now();
+      // alternate disconnected variants for preview
+      mockError = (state.wsState === 'reconnecting') ? 'Connection refused' : '';
+      tip = mockError ? `Error: ${mockError}` : `Disconnected since ${fmtT(lastDisconnectAt)}.`;
+    }
+    wsDot.title = tip;
+  });
+  nav.append(wsDot);
+  tabDefs.forEach(def => {
+    const attrs = { 'data-tab': def.id, style: 'position:relative;' + (def.color ? `color:${def.color};` : '') };
+    if (def.color) attrs['data-color'] = def.color;
+    let btn;
+    if (def.id === 'manual') {
+      const fillingDot = APP_CONFIG.filling.enabled !== false
+        ? h('span', { id: 'nav-fill-dot-manual', style: 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#fb923c;margin-right:6px;vertical-align:middle;visibility:hidden;' })
+        : null;
+      const grid = h('span', { id: 'nav-area-dots-manual', style: 'display:inline-grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;gap:2px;margin-left:6px;vertical-align:middle;' });
+      APP_CONFIG.areas.forEach((a, i) => {
+        if (a.enabled === false) return;
+        grid.append(h('span', { 'data-area': a.id, style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${areaColor(i)};visibility:hidden;` }));
+      });
+      const children = fillingDot ? [fillingDot, def.label, ' ', grid] : [def.label, ' ', grid];
+      btn = h('button', attrs, ...children);
+    } else {
+      const dot = h('span', { class: 'status-dot', id: `nav-dot-${def.id}`, style: 'display:none;' });
+      btn = h('button', attrs, def.label, ' ', dot);
+    }
+    btn.addEventListener('click', () => showTab(def.id));
+    nav.append(btn);
+  });
+  refreshNavDots();
+}
+
+function refreshNavDots() {
+  // Manual Control: filling dot (left, fixed) + per-area dots (right, in 2-row grid).
+  // Slots stay in place; only visibility toggles.
+  const fillingDot = document.getElementById('nav-fill-dot-manual');
+  if (fillingDot) {
+    const fActive = state.eState['filling'] === 'active' && state.eSource['filling'] === 'manual';
+    fillingDot.style.visibility = fActive ? 'visible' : 'hidden';
+  }
+  const grid = document.getElementById('nav-area-dots-manual');
+  if (grid) {
+    grid.querySelectorAll('[data-area]').forEach(el => {
+      const aid = el.getAttribute('data-area');
+      const active = state.eState[aid] === 'active' && state.eSource[aid] === 'manual';
+      el.style.visibility = active ? 'visible' : 'hidden';
+    });
+  }
+  // Area tabs: paused (always schedule) or active by non-manual source
+  APP_CONFIG.areas.forEach((a, i) => {
+    const dot = document.getElementById(`nav-dot-${a.id}`);
+    if (!dot) return;
+    const st = state.eState[a.id];
+    const scheduleActive = st === 'paused' || (st === 'active' && state.eSource[a.id] !== 'manual');
+    if (scheduleActive) { dot.style.background = areaColor(i); dot.style.display = ''; }
+    else dot.style.display = 'none';
+  });
+}
+
+buildEmergencyBar();
+buildNav();
+showTab('manual');
+</script>
+</body>
+</html>

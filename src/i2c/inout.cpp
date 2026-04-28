@@ -60,6 +60,7 @@ void test_pcf() {
 }
 
 // Call this function periodically with the current port state (e.g., every 5ms)
+// It is intended as debouncing and filtering of level switches and buttons inputs
 uint16_t filter_inputs(uint16_t raw_input, FilterState *state) {
   for (uint8_t i = 0; i < 16; i++) {
     bool new_bit = (raw_input >> i) & 1;
