@@ -1,0 +1,39 @@
+{
+  "device_name": "ESP32-Irrigator",
+  "wifi_ssid": "",
+  "wifi_password": "",
+
+  "filling": {
+    "enabled": true,
+    "max_minutes": 16,
+    "pump_id": 3,
+    "level_filtering_seconds": 10,
+    "leakage_detector_threshold": 3,
+    "high_level_pressure": 120000,
+    "low_level_pressure": -200000
+  },
+  "areas": [
+    {
+      "id": "Grass",
+      "enabled": true,
+      "description": "Irrigation for grass areas",
+      "pump_id": 1,
+      "pump_start_delay_seconds": 6,
+      "main_valve_id": 1,
+      "zone_ids": [1, 2, 3, 4, 5],
+      "zone_names": ["Left", "Mid-left", "Mid-right", "Right", "Parking"],
+      "max_minutes": 20
+    },
+    {
+      "id": "Drip",
+      "enabled": false,
+      "description": "Irrigation for drip areas",
+      "pump_id": 2,
+      "pump_start_delay_seconds": 6,
+      "main_valve_id": 2,
+      "zone_ids": [6, 7, 8, 9],
+      "zone_names": ["Trees", "Flowers", "Tomatoes", "Herbs"],
+      "max_minutes": 480
+    }
+  ]
+}

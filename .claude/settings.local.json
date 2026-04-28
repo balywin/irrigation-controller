@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(npm install *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const p = require\\('./package-lock.json'\\); const keys = ['svelte','vite','@sveltejs/vite-plugin-svelte','vitest']; keys.forEach\\(k => { const n = p.packages['node_modules/'+k]; console.log\\(k, n ? n.version : 'NOT FOUND'\\); }\\)\")",
+      "Bash(node -e \"const p = require\\('./package-lock.json'\\); console.log\\('lockfileVersion:', p.lockfileVersion\\); console.log\\('name:', p.name\\);\")",
+      "Bash(git *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(pio run *)",
+      "Bash(node tools/embed_static.js --input data --output include/embedded_files.h --gzip)",
+      "Bash(open *)",
+      "Bash(node tools/embed_static.js --input data/config/samples --output /tmp/test_embedded_configs.h --prefix /config/)",
+      "Read(//tmp/**)",
+      "Bash(grep -n \"card.*--area-color\\\\|h\\('div', { class: 'card'\" /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/preview.html)",
+      "WebFetch(domain:rstudio.github.io)",
+      "Bash(curl -s https://rstudio.github.io/websocket/reference/figures/logo.svg)",
+      "Bash(curl -s -o /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/assets/ws-icon.svg https://rstudio.github.io/websocket/reference/figures/logo.svg)",
+      "Bash(curl -sL -o /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/assets/ws-icon.png https://raw.githubusercontent.com/Marfusios/websocket-client/master/websocket-logo-modern.png)"
+    ]
+  }
+}

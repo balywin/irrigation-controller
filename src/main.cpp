@@ -19,6 +19,7 @@
 #include "i2c/oled.h"
 #include "network.h"
 #include "webserver_embedded.h"
+#include "websocket_protocol.h"
 
 RTC_DS3231 rtc;
 WiFiUDP ntpUDP;
@@ -31,6 +32,10 @@ ControllerConfig controllerConfig;
 uint32_t fillingMaxMs;
 uint32_t grassMaxMs;
 uint32_t dripMaxMs;
+// Per-run override for the per-zone-group switch interval (ms). Set by WS
+// `start` command's `durationMinutes`; 0 = fall back to the default formula
+// `grassMaxMs / (numberOfGrassZones - 1)`. Cleared on the next applyConfig.
+uint32_t grassGroupSwitchMs = 0;
 uint32_t levelFilteringMsThreshold;
 uint32_t buttonFilteringCounterThreshold;
 
@@ -58,6 +63,7 @@ uint16_t iState = 0xFFFF;
 uint16_t iFiltered;
 // -------------- Pump related -----------------------
 uint32_t pressureRaw = 0;
+uint16_t ultrasonic = 0;
 bool fillingEnabled = false;
 bool prevFillingEnabled = false;
 uint32_t leakageDetectorCounter = 0;
@@ -97,17 +103,20 @@ uint8_t grassZones[MAX_NUMBER_OF_GRASS_ZONES];
 uint8_t dripZones[MAX_NUMBER_OF_DRIP_ZONES];
 
 void applyAppConfig(const JsonDocument& doc) {
-  controllerConfig.numberOfGrassZones = doc["number_of_grass_zones"] | MAX_NUMBER_OF_GRASS_ZONES;
-  controllerConfig.numberOfDripZones = doc["number_of_drip_zones"] | MAX_NUMBER_OF_DRIP_ZONES;
-  controllerConfig.fillingMaxMinutes = doc["filling_max_minutes"] | FILLING_MAX_MINUTES;
-  controllerConfig.grassMaxMinutes   = doc["grass_max_minutes"]   | GRASS_MAX_MINUTES;
-  controllerConfig.dripMaxMinutes    = doc["drip_max_minutes"]    | DRIP_MAX_MINUTES;
-  controllerConfig.leakageDetectorThreshold = doc["leakage_detector_threshold"] | LEAKAGE_DETECTOR_THRESHOLD;
-  controllerConfig.levelFilteringSeconds = doc["level_filtering_seconds"] | LEVEL_FILTERING_SECONDS;
+  controllerConfig.fillingMaxMinutes        = doc["filling"]["max_minutes"]                | FILLING_MAX_MINUTES;
+  controllerConfig.leakageDetectorThreshold = doc["filling"]["leakage_detector_threshold"] | LEAKAGE_DETECTOR_THRESHOLD;
+  controllerConfig.levelFilteringSeconds    = doc["filling"]["level_filtering_seconds"]    | LEVEL_FILTERING_SECONDS;
+  controllerConfig.highLevelPressure        = doc["filling"]["high_level_pressure"]        | HIGH_LEVEL_PRESSURE;
+  controllerConfig.lowLevelPressure         = doc["filling"]["low_level_pressure"]         | LOW_LEVEL_PRESSURE;
+
+  controllerConfig.grassMaxMinutes            = doc["grass_irrigation"]["max_minutes"]             | GRASS_MAX_MINUTES;
+  controllerConfig.grassPumpStartDelaySeconds = doc["grass_irrigation"]["pump_start_delay_seconds"] | GRASS_PUMP_START_DELAY_SECONDS;
+  controllerConfig.numberOfGrassZones         = doc["grass_irrigation"]["number_of_zones"]         | MAX_NUMBER_OF_GRASS_ZONES;
+
+  controllerConfig.dripMaxMinutes    = doc["drip_irrigation"]["max_minutes"]     | DRIP_MAX_MINUTES;
+  controllerConfig.numberOfDripZones = doc["drip_irrigation"]["number_of_zones"] | MAX_NUMBER_OF_DRIP_ZONES;
+
   controllerConfig.buttonFilteringMs = doc["button_filtering_ms"] | BUTTON_FILTERING_MS;
-  controllerConfig.grassPumpStartDelaySeconds = doc["grass_pump_start_delay_seconds"] |  GRASS_PUMP_START_DELAY_SECONDS;
-  controllerConfig.highLevelPressure = doc["high_level_pressure"] | HIGH_LEVEL_PRESSURE;
-  controllerConfig.lowLevelPressure = doc["low_level_pressure"] | LOW_LEVEL_PRESSURE;
 
   fillingMaxMs = controllerConfig.fillingMaxMinutes * 60 * 1000UL; 
   grassMaxMs   = controllerConfig.grassMaxMinutes   * 60 * 1000UL; 
@@ -143,6 +152,14 @@ void showPressure(uint8_t line, uint8_t size) {
   Serial.print("Pressure raw value: ");
   Serial.println((long) pressureRaw);
   oled_show(line, pressure, size);
+}
+
+void showUltrasonic(uint8_t line, uint8_t size) {
+  char ultrasonicStr[24];
+  sprintf(ultrasonicStr, "%u ", ultrasonic);
+  Serial.print("uSonic mm: ");
+  Serial.println((long) ultrasonic);
+  oled_show(line, ultrasonicStr, size);
 }
 
 void showTime() {
@@ -234,9 +251,11 @@ void setup() {
 
   printBoardInfo();
   initFs();
+  
+  Serial2.begin(9600, SERIAL_8N1, 2, 15);
 
   // Load App (Controller) Configuration
-  loadJsonFile(appConfigJson, "/config/app.json");
+  loadJsonFile(appConfigJson, "/config/app_config.json");
   applyAppConfig(appConfigJson);
   printTestValues(appConfigJson);
   Serial.printf("  - Filling max minutes: %d\n", controllerConfig.fillingMaxMinutes);
@@ -245,7 +264,7 @@ void setup() {
   loadJsonFile(manualControlJson, "/config/manual_control.json");
 
   // Load schedule configuration
-  loadJsonFile(scheduleJson, "/config/auto_schedule.json");
+  loadJsonFile(scheduleJson, "/config/schedule.json");
 
   // Set I2C pins
   Wire.setPins(I2C_SDA, I2C_SCL);
@@ -302,6 +321,93 @@ void changeGrassZone(int8_t step) {
   lastTimeGrassZoneSwitched = millis();
 }
 
+void startGrassIrrigation() {
+  grassIrrigationRequested = true;
+  if (level_1) drainingDisabled = false;
+  lastTimeGrassIrrigationRequested = millis();
+  lastTimeGrassZoneSwitched = millis();
+  grass_zone_index = 0;
+}
+
+void stopGrassIrrigation() {
+  grassIrrigationRequested = false;
+  closeGrassValves();
+}
+
+void startDripIrrigation() {
+  dripIrrigationRequested = true;
+  if (level_1) drainingDisabled = false;
+  lastTimeDripIrrigationRequested = millis();
+  leakageDetectorCounter = 0;
+}
+
+void stopDripIrrigation() {
+  dripIrrigationRequested = false;
+  closeDripValves();
+}
+
+bool isGrassIrrigating() { return grassIrrigationRequested; }
+bool isDripIrrigating()  { return dripIrrigationRequested; }
+
+void startFilling() {
+  if (level_4) {
+    fillingEnabled = false;
+    return;
+  }
+  fillingEnabled = true;
+  fillingRequested = true;
+  lastTimeFillingRequested = millis();
+  leakageDetectorCounter = 0;
+}
+
+void stopFilling() {
+  fillingRequested = false;
+}
+
+bool isFillingActive() { return fillingRequested; }
+bool isFillingEnabled() { return fillingEnabled; }
+bool isDrainingDisabled() { return drainingDisabled; }
+int8_t getGrassZoneIndex() { return grass_zone_index; }
+uint32_t getPressureRawValue() { return pressureRaw; }
+
+// Remaining-time accessors (ms). Return 0 when the corresponding subsystem
+// is not running, to make 'no-data' detectable on the consumer side.
+uint32_t getGrassRemainingMs() {
+  if (!grassIrrigationRequested || grassMaxMs == 0) return 0;
+  uint32_t elapsed = millis() - lastTimeGrassIrrigationRequested;
+  return elapsed >= grassMaxMs ? 0 : (grassMaxMs - elapsed);
+}
+uint32_t getGrassGroupRemainingMs() {
+  if (!grassIrrigationRequested || grassMaxMs == 0 || controllerConfig.numberOfGrassZones <= 1) return 0;
+  uint32_t perZoneMs = grassGroupSwitchMs > 0 ? grassGroupSwitchMs : (grassMaxMs / (controllerConfig.numberOfGrassZones - 1));
+  uint32_t elapsed = millis() - lastTimeGrassZoneSwitched;
+  return elapsed >= perZoneMs ? 0 : (perZoneMs - elapsed);
+}
+uint32_t getDripRemainingMs() {
+  if (!dripIrrigationRequested || dripMaxMs == 0) return 0;
+  uint32_t elapsed = millis() - lastTimeDripIrrigationRequested;
+  return elapsed >= dripMaxMs ? 0 : (dripMaxMs - elapsed);
+}
+uint32_t getFillingRemainingMs() {
+  if (!fillingRequested || fillingMaxMs == 0) return 0;
+  uint32_t elapsed = millis() - lastTimeFillingRequested;
+  return elapsed >= fillingMaxMs ? 0 : (fillingMaxMs - elapsed);
+}
+
+uint8_t getWaterLevelPercent() {
+  if (level_4) return 100;
+  if (level_3) return 75;
+  if (level_2) return 50;
+  if (level_1) return 25;
+  return 0;
+}
+
+bool getPumpWellActive() { return getPumpWell(); }
+bool getPumpGrassActive() { return getPumpGrass(); }
+bool getPumpDripActive() { return getPumpDrip(); }
+bool getGrassMainValveActive() { return !getOutput(MAIN_VALVE_GRASS); }
+bool getDripMainValveActive() { return !getOutput(MAIN_VALVE_DRIP); }
+
 void loop() {
   if (checkConnection()) {       // If just got connected
     setup_NTP();  // This also updates the time
@@ -327,7 +433,8 @@ void loop() {
         closeGrassValves();
         Serial.println("Grass irrigation completed in " + String(grassMaxMs / 60000UL) + " minutes");
       } else {
-        if ((currentTime - lastTimeGrassZoneSwitched) >= (grassMaxMs / (controllerConfig.numberOfGrassZones-1))) {
+        uint32_t switchMs = grassGroupSwitchMs > 0 ? grassGroupSwitchMs : (grassMaxMs / (controllerConfig.numberOfGrassZones-1));
+        if ((currentTime - lastTimeGrassZoneSwitched) >= switchMs) {
           changeGrassZone(+1);
         }
         for (uint8_t i = 1; i < controllerConfig.numberOfGrassZones; i++) {
@@ -364,7 +471,21 @@ void loop() {
   currentTime = millis();
   if ((currentTime - lastTimeShowLevel) >= PRESSURE_SCAN_PERIOD_MS) {
     pressureRaw = pressureSensor.read(true);
-    showPressure(6, 1);
+    //showPressure(6, 1);
+    int id = 0;
+    int d;
+    while (Serial2.available()) {
+      Serial.print(d = Serial2.read(), HEX);
+      Serial.print(' ');
+      if (id == 1) ultrasonic = d << 8;
+      if (id == 2) ultrasonic += d;
+      id++;
+      if (id % 4 == 0) Serial.println();
+    }
+    if (id) {
+      Serial.println();
+      if ((ultrasonic > 0) && (ultrasonic < 6000)) showUltrasonic(6, 1);
+    }
     lastTimeShowLevel = currentTime;
   }
 
@@ -555,10 +676,12 @@ void handleButtons() {
           lastTimeFillingRequested = millis();
           fillingMaxMs = controllerConfig.fillingMaxMinutes / (level_2 ? 2 : level_3 ? 3 : 1) * 60 * 1000UL;
           fillingRequested = true;
+          websocketNotifyHardwareCommand("start", "Filling");
         } else if (millis() - lastTimeFillingRequested < 3000UL) {
           fillingMaxMs *= 2;
         } else {
           fillingRequested = false;
+          websocketNotifyHardwareCommand("stop", "Filling");
         }
         if (!level_4) fillingEnabled = true;
         //i1FilterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
@@ -570,8 +693,10 @@ void handleButtons() {
           if (level_1) drainingDisabled = false;
           lastTimeGrassIrrigationRequested = millis();
           lastTimeGrassZoneSwitched = millis();
+          websocketNotifyHardwareCommand("start", "Grass");
         } else {
           closeGrassValves();
+          websocketNotifyHardwareCommand("stop", "Grass");
         }
         break;
       case BUTTON_DRIP_MASK:    // Drip button
@@ -580,13 +705,16 @@ void handleButtons() {
           if (level_1) drainingDisabled = false;
           lastTimeDripIrrigationRequested = millis();
           leakageDetectorCounter = 0;
+          websocketNotifyHardwareCommand("start", "Drip");
         } else {
           closeDripValves();
+          websocketNotifyHardwareCommand("stop", "Drip");
         }
         break;
       case BUTTON_ZONE_SWITCH_MASK:    // Zone Switch button
         if (grassIrrigationRequested) {
           changeGrassZone(+1);
+          websocketNotifyHardwareCommand("zone_next", "Grass", grass_zone_index);
         }
         break;
       case BUTTON_FILLING_MASK | BUTTON_GRASS_MASK:    // Filling and Grass buttons together

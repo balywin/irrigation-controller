@@ -1,0 +1,56 @@
+{
+    "Grass": {
+        "enabled": true,
+        "suspendAboveTempEnabled": true,
+        "suspendAboveTemp": 34,
+        "suspendOnRainEnabled": true,
+        "suspendOnRainAbove": 2,
+        "schedules": [
+            {
+                "enabled": true,
+                "zones": [[1, 3], [2, 4], [3, 5]],
+                "durationMinutes": 30,
+                "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+                "startTimes": ["07:00", "19:00"],
+                "sunriseSchedule": { "enabled": false, "sunriseOffsetMinutes": 0 },
+                "sunsetSchedule": { "enabled": false, "sunsetOffsetMinutes": 0 }
+            },
+            {
+                "enabled": true,
+                "zones": [[2, 3], [1, 4], [2, 5]],
+                "durationMinutes": 30,
+                "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+                "startTimes": ["07:00", "19:00"],
+                "sunriseSchedule": { "enabled": true, "sunriseOffsetMinutes": 10 },
+                "sunsetSchedule": { "enabled": true, "sunsetOffsetMinutes": 10 }
+            }
+        ]
+    },
+    "Drip": {
+        "enabled": true,
+        "suspendAboveTempEnabled": false,
+        "suspendAboveTemp": 36,
+        "suspendOnRainEnabled": false,
+        "suspendOnRainAbove": 5,
+        "schedules": [
+            {
+                "enabled": true,
+                "zones": [[1, 4], [2, 3]],
+                "durationMinutes": 60,
+                "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+                "startTimes": ["07:00", "19:00"],
+                "sunriseSchedule": { "enabled": false, "sunriseOffsetMinutes": 0 },
+                "sunsetSchedule": { "enabled": false, "sunsetOffsetMinutes": 0 }
+            },
+            {
+                "enabled": true,
+                "zones": [[3, 4], [1, 5], [2, 3]],
+                "durationMinutes": 90,
+                "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+                "startTimes": ["07:00", "19:00"],
+                "sunriseSchedule": { "enabled": true, "sunriseOffsetMinutes": 10 },
+                "sunsetSchedule": { "enabled": true, "sunsetOffsetMinutes": 10 }
+            }
+        ]
+    }
+}

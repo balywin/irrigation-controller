@@ -2,8 +2,8 @@ Embedding SPA into firmware (overview)
 
 Goal
 - Serve the static SPA from flash (PROGMEM) so the web page is part of the firmware binary.
-- Allow the UI to edit JSON config files and persist them to LittleFS so changes survive at runtime.
-- On first boot (or when configs are missing), copy embedded default configs into LittleFS.
+- Allow the UI to edit JSON config files and persist them to LittleFS so changes survive power cycles or reset.
+- On first boot (or when configs are missing or corrupted), copy embedded default configs into LittleFS.
 
 Workflow
 1. Build your Svelte app (e.g. `npm run build`) so the compiled files are available (dist or public/build).
