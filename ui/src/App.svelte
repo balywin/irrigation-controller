@@ -196,7 +196,7 @@
   }
 
   function isScheduleActive(id) {
-    return (ws.status?.areas?.[id]?.scheduleActive ?? false) || eStateOf(id) === 'paused';
+    return (ws.status?.areas?.[id]?.scheduleActive ?? -1) >= 0 || eStateOf(id) === 'paused';
   }
 
   function manualVis(target) {
@@ -236,8 +236,10 @@
     {/if}
     {#each areas as area, i}
       {#if area.enabled !== false}
-        {@const zones = activeZones(area.id)}
-        {@const activeGrpIdx = ws.status?.areas?.[area.id]?.activeGroupIndex ?? -1}
+        {@const allGroups = manualZones[area.id] ?? []}
+        {@const wsZones = ws.status?.areas?.[area.id]?.activeZones ?? []}
+        {@const wsZonesStr = wsZones.length > 0 ? [...wsZones].sort((a,b)=>a-b).join('') : ''}
+        {@const activeGrpIdx = wsZonesStr ? allGroups.findIndex(g => g === wsZonesStr) : -1}
         <button
           class={eClass(area.id)}
           style={eStateOf(area.id) !== 'inactive' || ePending[area.id] ? `background:${areaColor(i)}` : ''}
@@ -247,12 +249,14 @@
         >
           <span class="e-title">
             {area.id[0]}
-            {#if zones.length > 0}
+            {#if allGroups.length > 0}
               <span class="e-zones">
-                {#each zones as z, zi}
-                  {#if zi > 0}{' '}{/if}<span class:e-zone-active={zi === activeGrpIdx}>{z}</span>
+                {#each allGroups as grp, gi}
+                  {#if gi > 0}{' '}{/if}<span class:e-zone-active={activeGrpIdx >= 0 && gi === activeGrpIdx}>{grp}</span>
                 {/each}
               </span>
+            {:else if wsZones.length > 0}
+              <span class="e-zones"><span class="e-zone-active">{wsZones.join('')}</span></span>
             {/if}
           </span>
           <span class="e-state">

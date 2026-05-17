@@ -208,6 +208,6 @@ void setupEmbeddedWebServer(AsyncWebServer &server) {
       return;
     }
     // Last resort: serve the embedded fallback/recovery page
-    request->send_P(200, "text/html", FALLBACK_HTML);
+    request->send(200, "text/html", FALLBACK_HTML);
   });
 }

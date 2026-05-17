@@ -1,10 +1,14 @@
 <script>
   import { onMount } from 'svelte';
   import { getConfig, saveConfig } from '../lib/api.js';
-  import { ws } from '../lib/ws.svelte.js';
+  import { ws, sendCommand } from '../lib/ws.svelte.js';
   import ScheduleCard from './ScheduleCard.svelte';
 
   let { area, color = '#2563eb' } = $props();
+
+  let wsConnected = $derived(ws.state === 'connected');
+  let areaRunning = $derived(ws.status?.areas?.[area.id]?.running ?? false);
+  let areaPaused = $derived(ws.status?.areas?.[area.id]?.pausedUntil != null);
 
   let fullScheduleRaw = null;
   let sectionEnabled = $state(true);
@@ -130,7 +134,9 @@
   <div style:opacity={sectionEnabled ? 1 : 0.55}>
     {#each schedules as schedule, i}
       <ScheduleCard {schedule} zoneIds={area.zone_ids ?? []} zoneNames={area.zone_names ?? []}
-        index={i} type={area.id} ondelete={() => deleteSchedule(i)} />
+        index={i} type={area.id} ondelete={() => deleteSchedule(i)}
+        {wsConnected} {areaRunning} {areaPaused}
+        onstart={() => sendCommand('run_schedule', area.id, { scheduleIndex: i })} />
     {/each}
     <div class="save-bar" style="justify-content:space-between;">
       <button type="button" class="btn btn-secondary" onclick={addSchedule}>+ Add Schedule</button>

@@ -11,6 +11,8 @@
 
   let areaConfigs = $state({});
   let loadError = $state('');
+  // JSON snapshots of config as last saved to firmware; used to detect unsaved changes.
+  let loadedConfigs = {};
 
   let areas = $derived(appConfig?.areas ?? []);
   let fillingCfg = $derived(appConfig?.filling ?? {});
@@ -61,6 +63,12 @@
     else { g.push(z); g.sort((a, b) => a - b); }
     const arr = ac.zones.map((og, i) => i === cur ? g : og);
     setGroups(areaId, arr);
+
+    const running = ws.status?.areas?.[areaId]?.running ?? false;
+    const fwActive = ws.status?.areas?.[areaId]?.activeGroupIndex ?? -1;
+    if (running && fwActive === cur) {
+      sendCommand('set_group', areaId, { groupIndex: cur, zones: g });
+    }
   }
 
   let dragSrc = { areaId: null, idx: null };
@@ -94,6 +102,16 @@
     dragSrc = { areaId: null, idx: null };
   }
 
+  function configSnapshot(ac) {
+    return { zones: ac.zones, shuffle: ac.shuffle, durationMinutes: ac.durationMinutes, delayedStart: ac.delayedStart };
+  }
+
+  function isDirty(areaId) {
+    const ac = areaConfigs[areaId];
+    if (!ac || !loadedConfigs[areaId]) return false;
+    return JSON.stringify(configSnapshot(ac)) !== loadedConfigs[areaId];
+  }
+
   onMount(async () => {
     try {
       const raw = await getConfig('manual_control.json');
@@ -107,6 +125,7 @@
           delayedStart: ac.delayedStart ?? '0m',
           presets: Array.isArray(ac.presets) ? ac.presets : [],
         };
+        loadedConfigs[area.id] = JSON.stringify(configSnapshot(areaConfigs[area.id]));
         manualZones[area.id] = groups.map(g => g.join(''));
         currentGroupIdxs[area.id] = 0;
       }
@@ -202,9 +221,9 @@
   // Backend auto-disarms schedule.enabled when a manual run starts (and
   // restores on stop / pause / natural end). On start, we pass the user's
   // current per-zone-group duration and the group count so the firmware
-  // computes the actual run length (durationMinutes * zoneGroupCount) and
+  // computes the actual run length (durationMinutes * groupCount) and
   // the per-group switch interval (durationMinutes).
-  function toggleArea(areaId) {
+  async function toggleArea(areaId) {
     const manual = ws.status?.areas?.[areaId]?.manuallyStarted;
     if (pendingAction[areaId]) return;
     if (!manual) pruneEmptyGroups(areaId);
@@ -212,10 +231,22 @@
     if (manual) {
       sendCommand('stop', areaId);
     } else {
+      if (isDirty(areaId)) {
+        try {
+          await saveConfig('manual_control.json', areaConfigs);
+          for (const area of areas) {
+            if (areaConfigs[area.id]) loadedConfigs[area.id] = JSON.stringify(configSnapshot(areaConfigs[area.id]));
+          }
+        } catch (e) {
+          presetError = `Config save failed: ${e.message}`;
+          clearPending(areaId);
+          return;
+        }
+      }
       const ac = areaConfigs[areaId];
       sendCommand('start', areaId, {
         durationMinutes: Number(ac?.durationMinutes) || 0,
-        zoneGroupCount: ac?.zones?.length || 0,
+        zones: ac?.zones ?? [],
       });
     }
   }
@@ -256,10 +287,8 @@
       const [active] = arr.splice(activeIdx, 1);
       shuffle(arr);
       const slots = [];
-      for (let i = 0; i <= arr.length; i++) if (i !== activeIdx) slots.push(i);
-      const newIdx = slots.length > 0
-        ? slots[Math.floor(Math.random() * slots.length)]
-        : 0;
+      for (let i = 0; i <= arr.length; i++) slots.push(i);
+      const newIdx = slots[Math.floor(Math.random() * slots.length)];
       arr.splice(newIdx, 0, active);
       setGroups(areaId, arr);
       currentGroupIdxs[areaId] = newIdx;
@@ -271,20 +300,38 @@
   }
 
   // Auto-shuffle when an area transitions running -> stopped, if its
-  // 'Zone Shuffle on Stop' toggle is enabled.
+  // 'Zone Shuffle on Stop' toggle is enabled. Also resets the selected
+  // group to 0 on any stop, and on start.
   let prevRunning = {};
   $effect(() => {
     for (const area of areas) {
       const r = ws.status?.areas?.[area.id]?.running ?? false;
       const prev = prevRunning[area.id] ?? false;
+      if (!prev && r) {
+        currentGroupIdxs[area.id] = 0;
+      }
       if (prev && !r) {
         const ac = areaConfigs[area.id];
         if (ac?.shuffle && ac.zones.length > 1) {
           setGroups(area.id, shuffle(ac.zones.map(g => [...g])));
-          currentGroupIdxs[area.id] = 0;
         }
+        currentGroupIdxs[area.id] = 0;
       }
       prevRunning[area.id] = r;
+    }
+  });
+
+  // While running, keep selected group tracking the firmware's active group.
+  $effect(() => {
+    for (const area of areas) {
+      if (!(ws.status?.areas?.[area.id]?.running ?? false)) continue;
+      const ac = areaConfigs[area.id];
+      if (!ac) continue;
+      const activeZones = ws.status?.areas?.[area.id]?.activeZones ?? [];
+      if (activeZones.length === 0) continue;
+      const key = groupKey(activeZones);
+      const idx = ac.zones.findIndex(g => groupKey(g) === key);
+      if (idx >= 0 && currentGroupIdxs[area.id] !== idx) currentGroupIdxs[area.id] = idx;
     }
   });
 
@@ -305,8 +352,12 @@
 
   async function persistPresets() {
     presetError = '';
-    try { await saveConfig('manual_control.json', areaConfigs); }
-    catch (e) { presetError = `Save failed: ${e.message}`; }
+    try {
+      await saveConfig('manual_control.json', areaConfigs);
+      for (const area of areas) {
+        if (areaConfigs[area.id]) loadedConfigs[area.id] = JSON.stringify(configSnapshot(areaConfigs[area.id]));
+      }
+    } catch (e) { presetError = `Save failed: ${e.message}`; }
   }
 
   function snapshotCurrent(ac, name) {
@@ -379,24 +430,26 @@
 {:else}
   <!-- Filling (compact, top) -->
   {@const fillingManual = ws.status?.filling?.manuallyStarted ?? false}
-  {@const fillingScheduleActive = ws.status?.filling?.scheduleActive ?? false}
-  {@const canStartFilling = fillingEnabled && !fillingScheduleActive}
+  {@const fillingScheduleActive = (ws.status?.filling?.scheduleActive ?? -1) >= 0}
   {@const fillingPaused = ws.status?.filling?.pausedUntil != null}
+  {@const canStartFilling = fillingEnabled && !fillingScheduleActive}
   {@const fillingDisabledReason = !fillingEnabled ? 'Filling disabled in settings' : fillingScheduleActive ? 'Running by schedule' : fillingPaused ? 'Paused by schedule' : ''}
   {@const fillingPending = pendingAction['filling']}
   {@const fillingBtnLabel = fillingPending === 'start' ? 'Starting…' : fillingPending === 'stop' ? 'Stopping…' : (fillingManual ? 'Stop' : 'Start')}
   {@const fillingBtnBg = fillingManual ? '#ef4444' : '#fb923c'}
   {@const wsDown = ws.state !== 'connected'}
-  {@const fillingBtnDisabled = wsDown || !!fillingPending || (fillingManual ? false : (!canStartFilling || fillingPaused))}
+  {@const fillingBtnDisabled = wsDown || !!fillingPending || (!fillingManual && !canStartFilling)}
   <div class="card" class:content-disabled={!fillingEnabled} style="--area-color:#fb923c;border-color:var(--area-color);border-width:2px;padding:0.5rem 1rem;">
     <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-      <h3 style="margin:0;">Filling</h3>
+      <h3 style="margin:0;">Automatic Filling</h3>
       <button type="button" class="btn"
         style={`background:${fillingBtnBg};color:#fff;min-width:6rem;`}
         disabled={fillingBtnDisabled}
-        title={fillingManual ? '' : fillingDisabledReason}
         onclick={toggleFilling}
       >{fillingBtnLabel}</button>
+      {#if fillingDisabledReason && !fillingManual}
+        <span style="font-size:0.75rem;color:#9ca3af;">{fillingDisabledReason}</span>
+      {/if}
       <span style="margin-left:auto;display:flex;gap:1rem;align-items:center;">
         <span><span class="status-label" style="margin-right:0.3rem;">Pump {fillingCfg.pump_id ?? '?'}</span><span class="status-value" class:status-on={fillingRunning} class:status-off={!fillingRunning}>{fillingRunning ? 'ON' : 'OFF'}</span></span>
         <span><span class="status-label" style="margin-right:0.3rem;">Water</span><span class="status-value">{ws.status?.sensors?.waterLevel != null ? `${ws.status.sensors.waterLevel}%` : '—'}</span></span>
@@ -411,7 +464,7 @@
     {@const ac = areaConfigs[area.id]}
     {@const running = ws.status?.areas?.[area.id]?.running ?? false}
     {@const manuallyStarted = ws.status?.areas?.[area.id]?.manuallyStarted ?? false}
-    {@const scheduleActive = ws.status?.areas?.[area.id]?.scheduleActive ?? false}
+    {@const scheduleActive = (ws.status?.areas?.[area.id]?.scheduleActive ?? -1) >= 0}
     {@const enabled = area.enabled ?? true}
     {@const noZones = ac.zones.length === 0}
     {@const noDuration = !ac.durationMinutes || ac.durationMinutes <= 0}
@@ -426,6 +479,7 @@
     {#if ac}
       {@const curIdx = currentGroupIdxs[area.id] ?? 0}
       {@const curGroup = ac.zones[curIdx] ?? []}
+      {@const fwGroupIdx = running ? (ws.status?.areas?.[area.id]?.activeGroupIndex ?? -1) : -1}
       <div class="card" class:content-disabled={!enabled} style={`--area-color:${AREA_COLORS[i % AREA_COLORS.length]};border-color:var(--area-color);border-width:2px;`}>
         <div class="card-header" style="justify-content:flex-start;gap:0.5rem;flex-wrap:wrap;">
           <h3>{area.id}</h3>
@@ -488,14 +542,22 @@
               <button type="button" class="btn btn-sm"
                 class:btn-primary={gi === curIdx}
                 class:btn-secondary={gi !== curIdx}
+                class:active-group={gi === fwGroupIdx}
                 style="font-family:monospace;min-width:2rem;cursor:grab;"
                 draggable="true"
                 ondragstart={(e) => onChipDragStart(area.id, gi, e)}
                 ondragover={(e) => onChipDragOver(area.id, e)}
                 ondrop={(e) => onChipDrop(area.id, gi, e)}
                 ondragend={onChipDragEnd}
-                onclick={() => currentGroupIdxs[area.id] = gi}
-                title={`Group ${gi + 1} — drag to reorder`}>{g.join('') || '·'}</button>
+                onclick={() => {
+                  if (running) {
+                    sendCommand('set_group', area.id, { groupIndex: gi });
+                  } else {
+                    currentGroupIdxs[area.id] = gi;
+                  }
+                }}
+                title={gi === fwGroupIdx ? `Group ${gi + 1} — running (click to switch)` : `Group ${gi + 1} — drag to reorder`}
+              >{g.join('') || '·'}</button>
             {/each}
           </div>
         </div>

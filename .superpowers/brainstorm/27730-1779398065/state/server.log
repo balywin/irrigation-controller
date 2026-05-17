@@ -1,0 +1,5 @@
+{"type":"server-started","port":52510,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:52510","screen_dir":"/Users/baa1sf3/balywin/PlatformIO/irrigation-controller/.superpowers/brainstorm/27730-1779398065/content","state_dir":"/Users/baa1sf3/balywin/PlatformIO/irrigation-controller/.superpowers/brainstorm/27730-1779398065/state"}
+{"type":"screen-added","file":"/Users/baa1sf3/balywin/PlatformIO/irrigation-controller/.superpowers/brainstorm/27730-1779398065/content/zone-group-select.html"}
+{"type":"screen-added","file":"/Users/baa1sf3/balywin/PlatformIO/irrigation-controller/.superpowers/brainstorm/27730-1779398065/content/zone-group-select-v2.html"}
+{"source":"user-event","type":"click","text":"B\n    \n      Continue remaining time\n      Groups keep their remaining time. Skipping \"3\" and coming back later resumes where it was.","choice":"continue","id":null,"timestamp":1779398425522}
+{"type":"server-stopped","reason":"idle timeout"}

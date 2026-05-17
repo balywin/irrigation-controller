@@ -1,5 +1,5 @@
-#include <LittleFS.h>
 #include "ElefantOTA.h"
+#include "elefant_ota_html.h"
 
 ElegantOTAClass::ElegantOTAClass(){}
 
@@ -21,30 +21,18 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
       if(_authenticate && !request->authenticate(_username.c_str(), _password.c_str())) {
         return request->requestAuthentication();
       }
-      #if defined(ASYNCWEBSERVER_VERSION) && ASYNCWEBSERVER_VERSION_MAJOR > 2  // This means we are using recommended fork of AsyncWebServer
-//        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", ELEGANT_HTML, sizeof(ELEGANT_HTML));
-
-        request->send(LittleFS, "/elefant_ota.html", String(), false, [&] (const String& var) {
-          if (var == "FW_VERSION") {
-            return _currentFWVersion;
-          } else {
-            return var;
-          }
-        });
-      #else
-        // Use non-deprecated beginResponse overload instead of beginResponse_P
-        AsyncWebServerResponse *response = request->beginResponse(200, String("text/html"), (const uint8_t*)ELEGANT_HTML, sizeof(ELEGANT_HTML));
-      #endif
-      //  response->addHeader("Content-Encoding", "gzip");
-      //  request->send(response);
+      String html = FPSTR(ELEGANT_HTML);
+      html.replace("%FW_VERSION%", _currentFWVersion);
+      request->send(200, String("text/html"), html);
     });
   #else
     _server->on("/update", HTTP_GET, [&](){
       if (_authenticate && !_server->authenticate(_username.c_str(), _password.c_str())) {
         return _server->requestAuthentication();
       }
-      _server->sendHeader("Content-Encoding", "gzip");
-      _server->send(200, String("text/html"), (const char*)ELEGANT_HTML, sizeof(ELEGANT_HTML));
+      String html = FPSTR(ELEGANT_HTML);
+      html.replace("%FW_VERSION%", _currentFWVersion);
+      _server->send(200, String("text/html"), html);
     });
   #endif
 

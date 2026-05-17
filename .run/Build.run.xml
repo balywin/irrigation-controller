@@ -1,0 +1,6 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Build" type="ARDUINO_RUN" factoryName="ARDUINO_RUN_FACTORY">
+    <options mode="BUILD" buildTarget="esp32dev" additionalArgs="" cleanFirst="false" port="" baudRate="115200" subprojectPath="" sketchFolder="" />
+    <method v="2" />
+  </configuration>
+</component>

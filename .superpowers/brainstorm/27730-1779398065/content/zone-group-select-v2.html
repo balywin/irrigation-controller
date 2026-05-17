@@ -1,0 +1,162 @@
+<style>
+  /* Mirror actual app styles */
+  .card { background:#fff; border-radius:8px; border:2px solid #16a34a; padding:1rem; margin-bottom:1rem; }
+  .card-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap; }
+  h3 { margin:0; font-size:1rem; }
+  .field { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; font-size:0.85rem; }
+  .btn { border:none; border-radius:5px; padding:0.25rem 0.6rem; font-size:0.8rem; font-weight:600; cursor:pointer; }
+  .btn-primary { background:#16a34a; color:#fff; }
+  .btn-secondary { background:#e5e7eb; color:#374151; }
+  .btn-danger { background:#ef4444; color:#fff; }
+  .btn-sm { padding:0.2rem 0.5rem; font-size:0.75rem; }
+  .chip { font-family:monospace; min-width:2rem; border-radius:5px; padding:0.2rem 0.5rem; font-size:0.75rem; font-weight:700; border:none; cursor:pointer; }
+  .chip.selected { background:#16a34a; color:#fff; }
+  .chip.inactive { background:#e5e7eb; color:#374151; }
+
+  /* "active on firmware" highlight */
+  .chip.fw-active {
+    outline: 2px solid #166534;
+    outline-offset: 2px;
+  }
+  @keyframes chip-pulse {
+    0%,100% { background:#16a34a; }
+    50% { background:#15803d; }
+  }
+  .chip.selected.fw-active { animation: chip-pulse 1.2s ease-in-out infinite; }
+
+  .zone-btn { font-family:monospace; border:none; border-radius:5px; padding:0.2rem 0.6rem; font-size:0.8rem; font-weight:700; cursor:pointer; }
+  .zone-btn.in-group { background:#16a34a; color:#fff; }
+  .zone-btn.not-in-group { background:#e5e7eb; color:#374151; }
+  .status-badge { font-size:0.7rem; padding:2px 8px; border-radius:99px; font-weight:700; }
+  .running { background:#dcfce7; color:#15803d; }
+  .label { font-size:0.75rem; font-weight:600; opacity:0.55; text-transform:uppercase; letter-spacing:0.05em; }
+  .live-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#16a34a; margin-right:4px; animation:chip-pulse 1s infinite; vertical-align:middle; }
+  .demo-title { font-weight:700; font-size:0.85rem; margin-bottom:0.35rem; }
+  .note { font-size:0.78rem; color:#6b7280; margin-top:0.4rem; }
+  hr { border:none; border-top:1px solid #e5e7eb; margin:1.5rem 0; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+  @media(max-width:600px){ .split{grid-template-columns:1fr;} }
+</style>
+
+<h2>Zone Group Selection — Manual Tab</h2>
+<p class="subtitle">Clicking a group chip during active irrigation should switch the firmware immediately</p>
+
+<hr>
+
+<div class="split">
+  <!-- CURRENT -->
+  <div>
+    <div class="demo-title">Current behavior</div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Grass</h3>
+        <button class="btn btn-danger">Stop</button>
+        <span class="status-badge running" style="margin-left:auto;">● Running</span>
+      </div>
+      <div class="field"><span>Zones in group</span>
+        <span class="zone-btn in-group">1 Front</span>
+        <span class="zone-btn in-group">2 Side</span>
+        <span class="zone-btn not-in-group">3 Back</span>
+        <span class="zone-btn not-in-group">4 Lawn</span>
+      </div>
+      <div class="field"><span>Sequence</span>
+        <button class="btn btn-sm btn-danger">✕</button>
+        <button class="btn btn-sm btn-primary">+</button>
+        <!-- group 0 selected in UI, but backend is on group 1 — mismatch -->
+        <span class="chip selected" title="Selected for editing">12</span>
+        <span class="chip inactive">3</span>
+        <span class="chip inactive">45</span>
+      </div>
+      <p class="note">Chip click = select for editing only. No backend command. Firmware runs group 1 ("3") but UI shows group 0 selected.</p>
+    </div>
+  </div>
+
+  <!-- OPTION A: chip click switches backend, chip tracks firmware -->
+  <div>
+    <div class="demo-title">Option A — Click chip = switch immediately</div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Grass</h3>
+        <button class="btn btn-danger">Stop</button>
+        <span class="status-badge running" style="margin-left:auto;">● Running</span>
+      </div>
+      <div class="field"><span>Zones in group</span>
+        <span class="zone-btn in-group">1 Front</span>
+        <span class="zone-btn in-group">2 Side</span>
+        <span class="zone-btn not-in-group">3 Back</span>
+        <span class="zone-btn not-in-group">4 Lawn</span>
+      </div>
+      <div class="field"><span>Sequence</span>
+        <button class="btn btn-sm btn-danger">✕</button>
+        <button class="btn btn-sm btn-primary">+</button>
+        <!-- chip is BOTH selected+fw-active (pulsing) = backend running this group -->
+        <span class="chip selected fw-active" title="Running on firmware — click another to switch">12</span>
+        <span class="chip inactive" title="Click to switch firmware to this group">3</span>
+        <span class="chip inactive" title="Click to switch firmware to this group">45</span>
+      </div>
+      <p class="note"><span class="live-dot"></span>Active chip pulses + green outline. Click "3" → firmware immediately switches. Zone editing updates the running group live.</p>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<h3 style="margin-bottom:0.5rem;">Zone editing while running (both options)</h3>
+<p class="subtitle">Toggling a zone in the active group during irrigation should immediately update firmware</p>
+
+<div class="split">
+  <div>
+    <div class="demo-title">Add zone 3 to active group "12"</div>
+    <div class="card">
+      <div class="field"><span>Zones in group</span>
+        <span class="zone-btn in-group">1 Front</span>
+        <span class="zone-btn in-group">2 Side</span>
+        <span class="zone-btn in-group" style="outline:2px solid #166534;outline-offset:2px;">3 Back</span>
+        <span class="zone-btn not-in-group">4 Lawn</span>
+      </div>
+      <div class="field"><span>Sequence</span>
+        <span class="chip selected fw-active">123</span>
+        <span class="chip inactive">45</span>
+      </div>
+      <p class="note">Toggle zone 3 → chip shows "123" + WS command sent → firmware opens valve 3 immediately.</p>
+    </div>
+  </div>
+  <div>
+    <div class="demo-title">Remove zone 2 from active group "12"</div>
+    <div class="card">
+      <div class="field"><span>Zones in group</span>
+        <span class="zone-btn in-group">1 Front</span>
+        <span class="zone-btn not-in-group" style="outline:2px dashed #ef4444;outline-offset:2px;">2 Side</span>
+        <span class="zone-btn not-in-group">3 Back</span>
+        <span class="zone-btn not-in-group">4 Lawn</span>
+      </div>
+      <div class="field"><span>Sequence</span>
+        <span class="chip selected fw-active">1</span>
+        <span class="chip inactive">3</span>
+        <span class="chip inactive">45</span>
+      </div>
+      <p class="note">Toggle zone 2 off → chip becomes "1" + WS command closes valve 2 immediately.</p>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<p><b>One clarifying question:</b> when clicking a different group chip to switch — should the timer for that group <b>restart from full duration</b>, or <b>continue from where it left off</b> (if it was previously visited)?</p>
+
+<div class="options">
+  <div class="option" data-choice="restart" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Restart timer</h3>
+      <p>Switching to group "3" always gives it a full duration slot. Simple, predictable.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="continue" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Continue remaining time</h3>
+      <p>Groups keep their remaining time. Skipping "3" and coming back later resumes where it was.</p>
+    </div>
+  </div>
+</div>

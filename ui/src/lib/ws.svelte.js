@@ -116,7 +116,7 @@ function applyEventToStatus(msg) {
     if (action === 'start') {
       area.running = true;
       area.manuallyStarted = true;
-      area.scheduleActive = false;
+      area.scheduleActive = -1;
     } else if (action === 'stop') {
       area.running = false;
       area.manuallyStarted = false;
@@ -133,7 +133,7 @@ function applyEventToStatus(msg) {
     if (action === 'start') {
       filling.running = true;
       filling.manuallyStarted = true;
-      filling.scheduleActive = false;
+      filling.scheduleActive = -1;
     } else if (action === 'stop') {
       filling.running = false;
       filling.manuallyStarted = false;

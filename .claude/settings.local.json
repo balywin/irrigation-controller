@@ -20,7 +20,12 @@
       "WebFetch(domain:rstudio.github.io)",
       "Bash(curl -s https://rstudio.github.io/websocket/reference/figures/logo.svg)",
       "Bash(curl -s -o /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/assets/ws-icon.svg https://rstudio.github.io/websocket/reference/figures/logo.svg)",
-      "Bash(curl -sL -o /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/assets/ws-icon.png https://raw.githubusercontent.com/Marfusios/websocket-client/master/websocket-logo-modern.png)"
+      "Bash(curl -sL -o /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/assets/ws-icon.png https://raw.githubusercontent.com/Marfusios/websocket-client/master/websocket-logo-modern.png)",
+      "Bash(xargs ls)",
+      "Bash(/Users/baa1sf3/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh *)",
+      "Bash(unset CLAUDECODE)",
+      "Bash(grep -E \"\\\\.svelte$|^d\")",
+      "Bash(xargs ls -lh)"
     ]
   }
 }

@@ -2,7 +2,20 @@
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90];
 
-  let { schedule, zoneIds, zoneNames, index, type, ondelete } = $props();
+  let { schedule, zoneIds, zoneNames, index, type, ondelete, onstart, wsConnected = true, areaRunning = false, areaPaused = false } = $props();
+
+  let startDisabled = $derived(
+    !wsConnected || areaRunning || areaPaused || !schedule.enabled ||
+    schedule.zones.length === 0 || !schedule.durationMinutes || schedule.durationMinutes <= 0
+  );
+  let startTitle = $derived(
+    !wsConnected ? 'WebSocket disconnected' :
+    areaRunning ? 'Area already running' :
+    areaPaused ? 'Area is paused' :
+    !schedule.enabled ? 'Schedule disabled' :
+    schedule.zones.length === 0 ? 'No zones configured' :
+    (!schedule.durationMinutes || schedule.durationMinutes <= 0) ? 'Duration must be > 0' : ''
+  );
 
   // Same zone-groups model as Manual tab. Each group fires simultaneously;
   // cycle iterates through groups in order. Flat array migrated to one-zone groups.
@@ -96,6 +109,11 @@
         <input type="checkbox" bind:checked={schedule.enabled} />
         <span class="toggle-slider"></span>
       </label>
+      <button type="button" class="btn btn-sm btn-primary"
+        disabled={startDisabled}
+        title={startTitle}
+        onclick={onstart}
+      >Start</button>
     </div>
     <button type="button" class="btn btn-danger" onclick={ondelete}>Delete</button>
   </div>

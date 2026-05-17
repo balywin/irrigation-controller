@@ -63,9 +63,10 @@ The firmware is built using PlatformIO and runs on ESP32. It:
  - serves a web interface as a single page app, which is embedded in the firmware binary using PROGMEM.
  - reading various sensors (like water level, pump status, valve status, temperature, humidity, rain) and keeping system status; make them available in the web interface similarly to a real-time monitoring and controlling system.
  - runs various tasks, keeping track of their status, like:
-   - schedule execution, involving timers and sensor readings
-   - manual control execution, which could involve timers for delayed start and duration-based control
-
+   - sensor readings, pump and valve control, supports timers for pump run duration, valve open duration, etc.
+   - schedule execution, state management for each area and zone
+   - manual control execution, including handling of the 'Start' and 'Stop' commands from the web interface and physical buttons, with appropriate state transitions and safety checks (e.g. water level too low)
+    
 ## 2. Configuration
 Configuration is stored as JSON files in LittleFS directory `./data/config`. The main config files are:
  - `app_config.json` - as per sample config file `app_config.sample.json` inside `samples` directory. Areas should be an array, zones in each area should be an array of numbers, and zone names should be an array of strings
@@ -73,9 +74,10 @@ Configuration is stored as JSON files in LittleFS directory `./data/config`. The
  - `manual_control.json` - contains manual control state for each area. Per area:
    - `zones` is an **array of zone groups**. Each group is an array of zone IDs that fire **simultaneously**. The cycle iterates through groups in order, holding each group for `durationMinutes`. Single-zone groups behave like the legacy flat list (e.g. `[[3], [4]]` ≡ old `[3, 4]`). Multi-zone groups (e.g. `[[1, 3], [2, 4]]`) energize all member valves at once.
    - Backwards compat: a flat array `[3, 4]` is auto-migrated by the UI to `[[3], [4]]`.
-   - `shuffle` (boolean) — when `true`, the group sequence is randomized automatically each time the area transitions running → stopped (UI side; persists only via preset save).
+   - `shuffle` (boolean) — when `true`, the group sequence is randomized automatically each time the area transitions running → stopped (UI side; persists in the backend configuration).
+   - **Selected group invariant**: the sequence chip that is highlighted (editor cursor) always reflects the group that is *currently active* while running, or *group 0* (first to run next) while stopped. On start the cursor snaps to 0; while running a reactive effect continuously matches `ws.status.areas[id].activeZones` against the UI's group list by content and moves the cursor there; on stop the cursor resets to 0.
    - `durationMinutes`, `delayedStart`, `presets` as before. Preset `zones` use the same group structure.
-   - See sample config file `manual_control.sample.json` in the `samples` directory.
+   - See all sample config files in the `samples` directory.
 
 >#### IMPORTANT: do not touch sample files without explicit confirmation as they are used as a specification for the config file structure and will be copied to LittleFS on first boot if actual config files are missing or corrupted.
 
@@ -118,7 +120,7 @@ The Web interface supports:
      - For areas: optional **per-group countdown** (`groupRemainingSeconds` from WS) on the left, then the state text (`ON` / `Off` / `Paused for <n> min.`), then the **total state countdown** on the right (`remainingSeconds` while running, `pausedUntil` while paused). Both countdowns format as `<n> min` while ≥ 60 s remain and switch to `<n> sec` for the final minute.
      - For Filling: an Android-style **battery indicator** plus a numeric percentage and the total countdown to the right. The static fill width equals the current water level (color-coded green/yellow/red). When filling is active, a translucent "rising" overlay grows repeatedly from the current level toward 100% then fades — visually mimicking the empty portion filling up (charging-style). When inactive, the fill is static.
    - **Right**: action label — exactly the verb that the next click will execute: `STOP`, `Pause 1h`, `Stopping…`, or `Pausing…`. Empty when the button is inactive (nothing to do). Right-edge slot has a fixed `min-width` so the label position never shifts.
- - **Active zone-group highlight** (in the Manual Control area card's Sequence chips and the matching schedule cards): the chip whose zones match `ws.status.areas[<area>].activeZones` gets an orange glow with a pulsing outline so the currently firing group is unmistakably visible regardless of which group the editor cursor is on.
+ - **Active zone-group highlight** (in the Manual Control area card's Sequence chips and the matching schedule cards): the chip whose zones match `ws.status.areas[<area>].activeZones` gets an orange glow with a pulsing outline so the currently firing group is unmistakably visible regardless of which group the editor cursor is on. In the emergency bar, the active group chip is identified by the same content-match (sorted zone IDs joined as string) against the UI's current group order — **not** by the firmware's `activeGroupIndex` positional field — so highlighting remains correct after the UI shuffles groups independently of the firmware's run order.
  - emergency buttons behave differently depending on the **source** of the active operation:
    - **If activated by schedule**: cycle is `Pause 1h → STOP → inactive`.
      - First click — action label `Pause 1h`, active color (green, blue, orange) — sends `pause_1h` (stops the run and blocks any `start` for 1 hour). State flips to `Paused for <n> min.` once WS confirms.
@@ -145,8 +147,8 @@ The Web interface supports:
  - **Zone group editor** (used in both Manual Control area cards and Schedule cards): replaces the legacy flat zone list. Two adjacent rows compose the editor:
    1. **Zones in group** — toggle buttons, one per zone defined in `app_config.json` for the area, labeled `<id> <name>`. Clicking adds/removes that zone from the **currently selected group**. In the Manual Control card only, this row is right-aligned with the `Zone Shuffle on Stop` toggle and `Shuffle now` button (Schedule cards do not expose shuffle).
    2. **Sequence** — chips representing each group (showing the joined zone IDs, or `·` for an empty group). Left of the chips: `‹` `›` (previous/next group), `✕` (delete current group), `+` (add new empty group). Chips are draggable to reorder; the editor cursor follows the dragged group's new position.
- - **`Shuffle now` semantics**: randomizes the group sequence. While the area is **running**, the currently-active group is pinned to the same physical run but moved to a new position in the cycle (so it remains active without disruption); detection uses `ws.status.areas[id].activeZones`, falling back to the editor cursor when WS info is unavailable. While **stopped**, performs a full Fisher–Yates shuffle. Empty groups are pruned before shuffle. Both `Start` and `Shuffle now` prune empty groups first.
- - **Auto-shuffle on stop**: when `Zone Shuffle on Stop` is enabled and the area transitions running → stopped (any source: button, schedule end, manual stop), the UI re-shuffles the group sequence. Reorderings are UI-only — they do not persist to `manual_control.json` until the user saves a preset or restarts. Backend keeps using the on-disk sequence for the running cycle.
+ - **`Shuffle now` semantics**: randomizes the group sequence. While the area is **running**, the currently-active group keeps running (no physical disruption) but is relocated to a random new position anywhere in the cycle (including its original position); after the shuffle the editor cursor follows the active group to its new position. Active group detection uses `ws.status.areas[id].activeZones` content-match against the UI's group list, falling back to the editor cursor when WS info is unavailable. While **stopped**, performs a full Fisher–Yates shuffle; cursor resets to 0. Empty groups are pruned before shuffle. Both `Start` and `Shuffle now` prune empty groups first.
+ - **Auto-shuffle on stop**: when `Zone Shuffle on Stop` is enabled and the area transitions running → stopped (any source: button, schedule end, manual stop), the UI re-shuffles the group sequence and resets the cursor to 0. If shuffle is disabled, the cursor still resets to 0 on stop. Reorderings are UI-only — they do not persist to `manual_control.json` until the user saves a preset or restarts. Backend keeps using the on-disk sequence for the running cycle.
  - **Schedule auto-disarm during manual run** (firmware-side, disk-persisted): when the firmware receives a `start` WS command for an area it:
    1. Reads the current `schedule.json[<area>].enabled` (the **global area flag**).
    2. Stashes that original value in `/config/disarm.json` (so it survives a reboot mid-run).

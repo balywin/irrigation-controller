@@ -1,83 +1,48 @@
 # Svelte UI Implementation Plan
 
-## Current Architecture Analysis
+## Current Architecture
 
-This ESP32 irrigation controller project currently has:
-- PlatformIO-based ESP32 firmware with ESPAsyncWebServer
-- Static file serving from embedded PROGMEM arrays via `embedded_files.h`
-- JSON-based configuration stored in LittleFS (`/config/*.json`)
-- Build tool (`tools/embed_static.js`) to convert static files to C header
-- Sensor reading subsystem (water level, pump status, valve status, temperature, humidity, rain)
-- Task runner tracking status of schedule execution and manual control operations
-- Captive portal mode for initial WiFi setup
-- Physical buttons + OLED screen for local control
+This project is an ESP32 irrigation controller with a Svelte SPA embedded into the firmware image.
 
-## Implementation Strategy
+- Firmware: PlatformIO project (`env:denky32`) using Arduino ESP32, ESPAsyncWebServer, LittleFS, AsyncWebSocket, OTA update support, physical buttons, sensors, and OLED display.
+- UI: Vite + Svelte app in `ui/`, rendered as a single-page app and served from PROGMEM via `include/embedded_files.h`.
+- Configuration: JSON files live at runtime in LittleFS under `/config/*.json`. The checked-in working copies are in `data/config/`; canonical sample schemas/default sources are in `data/config/samples/`.
+- Preview: `preview.html` is a dependency-free mock of the production UI and must stay in sync with changes under `ui/src/**`.
 
-### 1. Svelte Application Architecture
+## Build And Embedding Workflow
 
-Create a complete Svelte SPA with:
+The current workflow is implemented by `platformio.ini`, `tools/embed_ui.py`, `tools/embed_configs.py`, and `tools/embed_static.js`.
 
-- **Emergency bar** (above all tabs, always visible, not scrollable):
-  - One button for filling + one per irrigation area (Grass, Drip, etc.)
-  - **Water level indicators**: filling button always shows water tank level % in the center, color-coded (green ≥60%, yellow 30-59%, red <30%); on the left side of the button, show a large color coded graphic indicator, similar to battery indicators on smartphones, that visually represents the water level in the tank (e.g. a droplet icon that fills up with color as the level increases, with the fill color changing based on the thresholds mentioned above). It should animate filling when the filling is active.
-  - **Active zone indicators**: when a process is active, show all zone groups on the left side of the button, next to the label, but show the currently active zone group highlighted; update in real-time as zones change during execution
-  - 3-state cycle when started by a schedule or 2-state cycle when manually started, per button:
-    1. **ON** (process running): "{Area}: Pause 1h" in area color (green, blue, etc.) — clicking sends `pause_1h` command, stops manual operation and disables global schedule flag for 1 hour
-    2. **Paused for <nn>min** (when 1h timer running) in a semi-active/dimmer color — clicking sends `off` command, which cancels the timer
-    3. **OFF** (no process): grayed out — no action until process starts again (by schedule or manual)
+1. Build firmware with PlatformIO. The `denky32` environment runs these pre-build scripts:
+   - `tools/embed_configs.py`: embeds `data/config/samples/` into `include/embedded_configs.h` using URL prefix `/config/`.
+   - `tools/embed_ui.py`: runs `npm run build` in `ui/`, then embeds the fresh `ui/dist/` directory into `include/embedded_files.h` using URL prefix `/` and gzip compression.
+2. Firmware includes `include/embedded_files.h` in `src/webserver_embedded.cpp` and serves `/index.html`, `/assets/*`, and other UI assets from PROGMEM.
 
-- **WebSocket connection indicator**: colored icon (green/orange/red) in nav area; tooltip on hover shows last connection time and error messages if any
+Important workflow notes:
 
-- **Tab-based navigation** (left to right):
-  - **Manual Control Tab** (default, leftmost): all areas' manual controls (zone selection, shuffle, duration, delayed start, start/stop) + filling control (start/stop, water level, pump status)
-    - Show small dots next to the tab title in 2 raws - all for manual activated processes in the color of the function. Each dot to have fixed location, not to move around as the states change.
-    - Show a small dot on the left side of the tab title for manual activated filling in the color of the function
-  - **\<Area\> Schedule Tab** (one per area, e.g. Grass, Drip): schedule configuration for that area
-    - Show a small dot in the area color on the right side of corresponding schedule tab title, if any schedule operation is currently active
-  - **Settings Tab**: application configuration (device name, WiFi, filling config, per-area hardware config)
-  - **Firmware Tab**: OTA firmware upload interface
+- `data/` is not the Svelte build output. Do not copy `ui/dist` into `data/`.
+- `tools/embed_ui.py` owns the production UI build before embedding; run `npm run build` manually only when you want a quick UI-only verification.
+- `data/config/samples/` is source material for default/sample configs and schema review. Do not edit those files without explicit user confirmation.
+- `include/embedded_files.h` and `include/embedded_configs.h` are generated files. Regenerate them through the build scripts instead of editing by hand.
+- Current implementation detail to keep in mind: `include/embedded_configs.h` is generated, but runtime default copying in `src/webserver_embedded.cpp` currently scans the `embedded_files` manifest from `include/embedded_files.h`. If default config reset/copy behavior is changed, wire `embedded_configs.h` into the firmware explicitly or copy samples into LittleFS by another deliberate path.
 
-- **UI visibility rules**: 
-  - never hide UI elements based on state; show them disabled with tooltip explaining why (e.g. "disabled because water level is low")
-  - never move UI elements around based on state; keep a consistent layout and use disabled states to indicate when actions are not possible
-  - Exception: the schedule tabs themselves and the emergency buttons can be hidden if the corresponding area is disabled in settings, since they are not applicable at all in that case.
+## Runtime Interfaces
 
-- **Mobile-first design**: UI must be usable on smartphones as well as desktops
-  - Responsive layout that adapts to small screens
-  - Touch-friendly controls (large enough tap targets)
-  - Horizontally scrollable tab bar on narrow screens
-  - Emergency buttons wrap to 2-column or 3-column grid on mobile, depending on the number of areas, to maintain large tap targets while fitting the screen width
-  - Input fields go full-width on mobile
+The ESP32 serves:
 
-### 2. Development Workflow
+- Static SPA routes: `/`, `/index.html`, `/assets/*`, with SPA fallback to `/index.html`.
+- Recovery page: `/recovery`, plus fallback filesystem upload/status APIs under `/api/fallback/*`.
+- Config REST API:
+  - `GET /api/config`
+  - `GET /api/config/<file>.json`
+  - `POST /api/config/<file>.json`
+- OTA:
+  - `GET /update`
+  - `GET /ota/start`
+  - `POST /ota/upload`
+- WebSocket: `/ws`, with command, status, config, save, reset, and event messages. See `websocket_protocol.md` for the protocol contract.
 
-- Use Vite + Svelte in the existing `ui/` directory
-- Build system outputs to `data/` for static embedding
-- ESP32 serves the compiled Svelte app via embedded files
-- API endpoints for configuration CRUD operations
-
-### 3. API Integration
-
-The ESP32 will serve:
-- **Static Files**: Svelte app (`/`, `/index.html`, `/assets/*`)
-- **API Endpoints**:
-  - `GET/PUT /config/app_config.json` (device settings)
-  - `GET/PUT /config/schedule.json` (irrigation schedules)
-  - `GET/PUT /config/manual_control.json` (manual controls)
-  - `GET /update` (OTA web UI page)
-  - `GET /ota/start` (OTA session start: mode/hash validation and update init)
-  - `POST /ota/upload` (OTA binary upload)
-  - `GET /status` (system status)
-- **WebSocket** (`ws://<host>/ws`):
-  - Bidirectional real-time channel between UI and controller
-  - Controller → UI: status updates (running zones, filling state, sensor readings, errors)
-  - UI → Controller: user commands (start/stop irrigation, start/stop filling, pause_1h, off, etc.)
-  - JSON message format with `type` field for routing
-  - Auto-reconnect on disconnect with exponential backoff
-  - WebSocket commands (to the backend) and events (from the backend) are defined in `websocket_protocol.md` file.
-
-### 4. UI Components Structure
+## UI Structure
 
 ```
 ui/src/
@@ -94,114 +59,26 @@ ui/src/
     └── FirmwareTab.svelte   (OTA update iframe)
 ```
 
-### 5. Build Process Integration
+## Configuration Management
 
-- Modify existing build process to:
-  1. Run `tools/embed_static.js` on `data/config/samples/` → `include/embedded_configs.h` (via `tools/embed_configs.py` pre-build script)
-  2. Run `npm run build` in `ui/` directory
-  3. Copy built files to `data/`
-  4. Run `tools/embed_static.js` on `data/` → `include/embedded_files.h`
-  5. Compile firmware with embedded UI and embedded default configs
+Use the sample files as the schema reference instead of duplicating the full schema in this document:
 
-### 6. Configuration Management
+- `data/config/samples/app_config.sample.json`
+- `data/config/samples/manual_control.sample.json`
+- `data/config/samples/schedule.sample.json`
 
-Config files live in LittleFS at `/config/*.json`. Canonical schema is defined by sample files in `data/config/samples/` — treat those as the authoritative specification.
+Key invariants:
 
-#### `app_config.json` — Schema
+- Area keys in `schedule.json` and `manual_control.json` must match `app_config.json` area `id` values.
+- `manual_control.json` and `schedule.json` use zone groups: `zones` is an array of groups, where each group is an array of zone IDs that run simultaneously.
+- The UI keeps backward compatibility with legacy flat zone arrays by migrating them to single-zone groups.
+- Runtime writes go to LittleFS `/config/*.json` through the REST API or WebSocket config messages.
 
-| Field | Type | Description |
-|---|---|---|
-| `device_name` | string | Human-readable device identifier |
-| `wifi_ssid` | string | WiFi network name |
-| `wifi_password` | string | WiFi password |
-| `filling` | object | Tank auto-fill subsystem config |
-| `areas` | array | Irrigation areas (dynamic, order preserved) |
-
-**`filling` object:**
-
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | bool | Enable auto tank-filling |
-| `max_minutes` | int | Max fill cycle duration before abort |
-| `pump_id` | int | Hardware pump index (1-based) |
-| `level_filtering_seconds` | int | Debounce delay for water level sensors |
-| `leakage_detector_threshold` | int | Max fill cycles without irrigation before leakage alarm |
-| `high_level_pressure` | int | Pressure sensor raw ADC value for tank full (Pa × scale) |
-| `low_level_pressure` | int | Pressure sensor raw ADC value for tank empty (negative = below sensor) |
-
-**Area object (element of `areas` array):**
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Area identifier used as key in schedule/manual_control (e.g. `"Grass"`) |
-| `enabled` | bool | Enable this irrigation subsystem |
-| `description` | string | Human label |
-| `pump_id` | int | Hardware pump index (1-based) |
-| `pump_start_delay_seconds` | int | Delay after valve open before pump starts |
-| `main_valve_id` | int | Hardware main valve index (1-based) |
-| `zone_ids` | array of int | Hardware zone numbers for this area (1-based) |
-| `zone_names` | array of string | Human-readable names matching `zone_ids` by index |
-| `max_minutes` | int | Safety cap — max run time per zone |
-
-Example: see `data/config/samples/app_config.sample.json`.
-
-#### `schedule.json` — Schema
-
-Top-level keys are area `id` strings matching `app_config.json` areas. Each area object:
-
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | bool | Area scheduling active |
-| `suspendAboveTempEnabled` | bool | Enable temperature-based suspension |
-| `suspendAboveTemp` | int | Suspend irrigation when temp exceeds this value (°C) |
-| `suspendOnRainEnabled` | bool | Enable rain-based suspension |
-| `suspendOnRainAbove` | int | Suspend irrigation when rain accumulation exceeds this value (L/m²) |
-| `schedules` | array | List of schedule entries |
-
-**Schedule entry object:**
-
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | bool | This schedule entry active |
-| `zones` | array of int | Zone IDs to irrigate (subset of area's `zone_ids`) |
-| `durationMinutes` | int | Run duration per zone in minutes |
-| `daysOfWeek` | array of int | Days to run (1=Mon … 7=Sun) |
-| `startTimes` | array of string | Fixed start times in `"HH:MM"` format |
-| `sunriseSchedule` | object | `{ "enabled": bool, "sunriseOffsetMinutes": int }` |
-| `sunsetSchedule` | object | `{ "enabled": bool, "sunsetOffsetMinutes": int }` |
-
-Example: see `data/config/samples/schedule.sample.json`.
-
-#### `manual_control.json` — Schema
-
-Top-level keys are area `id` strings matching `app_config.json` areas. Each area object:
-
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | bool | Area active for manual run |
-| `zones` | array of int | Zone IDs to activate |
-| `shuffle` | bool | Randomize zone order each run |
-| `durationMinutes` | int | Run duration per zone in minutes |
-| `delayedStart` | string | Delay before start, format `"Nm"` (e.g. `"30m"`, `"0m"` = immediate) |
-| `presets` | array of object | Saved named snapshots of `{zones, shuffle, durationMinutes, delayedStart}` for one-click recall. Each entry has fields `name` (string, unique within area) plus the four parameter fields. May be empty `[]`. |
-
-Example: see `data/config/samples/manual_control.sample.json`.
-
-Area keys must match `id` fields in `app_config.json`. Firmware iterates all top-level keys dynamically.
-
-### 6a. Sample Config Files as Firmware Defaults
-
-Sample files in `data/config/samples/` serve two roles:
-1. **Specification** — canonical schema reference; do not modify without explicit confirmation
-2. **Firmware defaults** — embedded in firmware binary (PROGMEM) via `include/embedded_configs.h`; firmware copies them to LittleFS on first boot or when config files are missing/corrupted
-
-**Build step:** A PlatformIO pre-build script (`tools/embed_configs.py`) runs `tools/embed_static.js` against `data/config/samples/` before each firmware build, regenerating `include/embedded_configs.h`. This guarantees sample content is always in sync with the binary.
-
-### 7. WebSocket Real-Time Communication
+## WebSocket Real-Time Communication
 
 #### Connection
 - UI opens WebSocket to `ws://<host>/ws` on load
-- Auto-reconnect with exponential backoff (1s → 2s → 4s → … max 10s)
+- Auto-reconnect with exponential backoff
 - Connection status indicator shown above tabs as colored dot:
   - **Green**: connected
   - **Orange**: reconnecting
@@ -219,17 +96,27 @@ Sample files in `data/config/samples/` serve two roles:
   - Uptime, errors, firmware version, diagnostic info 
 - UI updates all tabs reactively from WebSocket status messages
 
-#### UI → Controller (commands)
-- Manual start/stop/resume irrigation per area
-- Manual start/stop/resume filling
-- Emergency commands: `pause_1h` (pause area/filling for 1 hour), `off` (cancel pause, full stop)
-- Commands sent as JSON: `{"type":"command","action":"start|stop|pause_1h|off","target":"Grass|Drip|filling"}`
+#### UI -> Controller (commands)
+- Manual start/stop irrigation per area
+- Manual start/stop filling
+- Emergency commands: `pause_1h` pauses a target for 1 hour; `stop` cancels a pause or stops an active run
+- Commands sent as JSON: `{"type":"command","action":"start|stop|pause_1h","target":"Grass|Drip|Filling"}`
 - Controller acknowledges with status update
 
-### 8. Features Implementation
+## UI Behavior
 
-#### Emergency Bar (above tabs, always visible)
-- One button per area + one for filling.
+### Global Rules
+
+- Keep layouts stable. Do not move controls based on runtime state.
+- Prefer disabled controls with explanatory `title` tooltips over hiding controls.
+- It is acceptable to hide whole schedule tabs and emergency buttons for disabled areas because those functions do not apply.
+- Keep the UI mobile-first with touch-friendly controls and horizontally scrollable tabs on narrow screens.
+- When `ui/src/**` changes, update `preview.html` in the same change.
+
+### Emergency Bar 
+ 
+- Located above tabs, never scrolled and always visible, not resizable
+- One button for filling, one per each area - in this order
 - Behavior depends on the **source** of the active operation (`manuallyStarted` vs `scheduleActive` from WS status):
   - **Schedule-active** → 3-state cycle:
     1. **Active**: `{Area}: Pause 1h` in area color — click sends `pause_1h` (firmware stops the run and blocks `start` for 1h).
@@ -240,8 +127,10 @@ Sample files in `data/config/samples/` serve two roles:
     2. **Inactive**: grayed out.
 - Source is determined live from `ws.status.<target>.manuallyStarted`. If the area was started by schedule and the user later clicks Manual Start while running, the Manual click overrides; subsequent emergency clicks treat it as manual.
 
-#### Manual Control Tab (default, leftmost)
-All areas' manual controls in a single tab. **Filling card is rendered first (top), followed by per-area cards.** No Save button — manual control state is transient and applied via `start`/`stop` commands; it is not persisted to `manual_control.json` from this tab.
+### Manual Control Tab
+
+This tab is the most left tab and acts as default
+All areas' manual controls are placed in this single tab. **Filling card is rendered first (top), followed by per-area cards.** No Save button — manual control state is transient and applied via `start`/`stop` commands; it is not persisted to `manual_control.json` from this tab.
 
 **Filling card (top, compact single-line layout):**
 - Single horizontal row: `[Filling title] [Start/Stop button]  ...  [Pump N status] [Water level]`
@@ -264,11 +153,16 @@ All areas' manual controls in a single tab. **Filling card is rendered first (to
 - Zone selection checkboxes (from area's zone_ids/zone_names)
   - multiple zones can be selected only while the area is idle. While active, the zones must be selected with radio buttons such as only one and exactly one zone can be active at a time. 
 - Shuffle button - one time randomization of zone order per click.
+  - **While running**: active group keeps running, relocated to a random new position (any slot), editor cursor follows it there.
+  - **While stopped**: full Fisher–Yates shuffle, cursor resets to 0.
+  - **Selected-group cursor invariant**: highlighted chip always shows the *currently active* group while running (tracked in real-time via `activeZones` content-match) or *group 0* while stopped. Cursor snaps to 0 on every start and every stop.
+  - **Emergency bar active-group highlight**: identified by content-match of `activeZones` (sorted zone IDs joined as string) against the UI's current group list — **not** by firmware's `activeGroupIndex` positional field — so it stays correct after a UI shuffle.
 - Duration per zone input
 - Delayed start presets on same line as input (0m, 1m, 5m, 10m, 20m, 30m, 1h, 2h)
 
-#### Schedule Tabs (one per area)
-- Global enable/disable toggle for area schedules
+### Schedule Tabs
+
+- Global enable/disable toggle for each area schedules
 - Temperature suspension config
 - List of schedule cards (add/edit/delete)
 - Each card: zones, duration, days, start times, sunrise/sunset options
@@ -279,54 +173,37 @@ All areas' manual controls in a single tab. **Filling card is rendered first (to
 - Delayed start: label + preset buttons + input all on one line
 - Add Schedule + Save buttons on one line
 
-#### Settings Tab
-- All parameters from `data/config/samples/app_config.sample.json`:
-  - Device name, WiFi SSID/password
-  - Filling: enabled, max minutes, pump ID, level filtering, leakage threshold, high/low level pressure
-  - Per-area: enabled, description, pump ID, pump start delay, main valve ID, zone IDs/names, max minutes
-- Backup / restore all configs
+### Settings Tab
 
-#### Firmware Tab
+- Allows editing all parameters existing in `data/config/samples/app_config.sample.json`
+- Loads and saves in file `data/config/app_config.json`
+- Backup / restore all configs as a separate file in `data/config/`, for example `data/config/app_config_bkp1.json`
+- Reset app_config by copying file `data/config/samples/app_config.sample.json` into `data/config/app_config.json`
+
+### Firmware Tab
+
+- always at the last position
 - OTA update via iframe to `/update`
 - Backend OTA workflow used by the page:
   - `GET /ota/start` initializes update (supports `mode` and optional `hash` query params)
   - `POST /ota/upload` streams firmware/filesystem binary payload
 
-#### System Status (shown in area tabs and filling tab)
+### System Status
+
 - Sensor readings: temperature, humidity, rain, water level
 - Per-pump and per-valve status
-- Active task info with progress
+- Active task info with progress shown in area and filling tabs, as well as in emergency button areas
 
-### 9. UI Visibility Rule
+## Implementation Focus
 
-Never hide UI elements based on the system state. Instead:
-- Show elements in **disabled** state when not applicable
-- Add **tooltip** explaining why disabled (e.g. "Disabled: water level is low", "Disabled: area not enabled")
-- Buttons, toggles, inputs all follow this rule
-UI elements could be hidden only in case of functionality disabled in Settings tab - as <Area> Schedule tab itself and emergency buttons 
-
-### 10. Implementation Steps
-
-1. **Setup** — Vite + Svelte dev environment in `ui/`
-2. **Infrastructure** — API layer, WebSocket client, shared stores
-3. **App shell** — Emergency bar, WS indicator, tab navigation
-4. **Area tabs** — Manual control + schedule per area
-5. **Filling tab** — Filling manual control
-6. **Settings tab** — App config editor
-7. **Firmware tab** — OTA iframe
-8. **Build integration** — Embedded file generation, verify on ESP32
-9. **Testing** — Hardware testing, responsive design, validation
+- Keep `ui/src/**` and `preview.html` visually and behaviorally aligned.
+- Keep `websocket_protocol.md`, firmware handlers, and UI WebSocket messages aligned when changing commands or status fields.
+- Keep generated embedded headers out of hand edits; change the source files and regenerate.
+- Validate UI changes with `npm run build` from `ui/`; validate firmware-impacting changes with `pio run` when feasible.
 
 ## Technical Considerations
 
-- **Memory Constraints**: ESP32 flash storage limits for embedded files
-- **Build Size**: Optimize Svelte bundle size
-- **Compatibility**: Ensure modern JS features work on target browsers
-- **WebSocket**: Single persistent connection for real-time status and commands; ESP32 AsyncWebSocket handles concurrent clients
-- **Offline Capability**: Local storage for pending configuration changes
-
-## Risk Mitigation
-
-- Implement graceful degradation for older browsers
-- Ensure configuration validation on both client and server
-- Backup/restore functionality for configurations
+- ESP32 flash and RAM constrain embedded asset size and JSON parsing.
+- Vite output must remain small enough for firmware embedding.
+- WebSocket status should remain the source of truth for running/paused/manual/schedule state.
+- Configuration validation should happen on both UI and firmware paths when adding fields.
