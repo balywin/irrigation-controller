@@ -18,14 +18,20 @@
     {"VivacarM", "@Titi14#Papazov22%"},
     {"Vivacar", "@Titi14#Papazov22%"}
   };
-  const unsigned char wificon[] PROGMEM = { // wifi icon
+  const unsigned char conIcon[] PROGMEM = { // wifi icon
     0x00, 0x3C, 0x42, 0x99, 0x24, 0x42, 0x18, 0x18
   };
-  const unsigned char wifidiscon[] PROGMEM = { // wifi icon
+  const unsigned char disconIcon[] PROGMEM = { // wifi icon
     0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00
   };
 #else
   #include <WebServer_WT32_ETH01.h>
+  const unsigned char conIcon[] PROGMEM = { // wifi icon
+    0x00, 0x33, 0x66, 0x33, 0x66, 0x33, 0x66, 0x00
+  };
+  const unsigned char disconIcon[] PROGMEM = { // wifi icon
+    0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00
+  };
 #endif
 
 #include <ElefantOTA.h>
@@ -48,13 +54,12 @@ uint32_t previousTime = 0;
 int8_t previousNetworkStatus = -1;
 // ----------- Connection status ---------------------
 bool previousConnected = false;
+uint32_t serverStartedEventTime = 0;
 
 uint32_t ota_progress_millis = 0;
 
 #define WIFI_RECONNECT_COUNTER_THRESHOLD 1000UL
 uint32_t wifiReconnectCounter = WIFI_RECONNECT_COUNTER_THRESHOLD;
-// Define timeout time in milliseconds (example: 2000ms = 2s)
-uint32_t connectionTimeoutMs = 2000;
 
 short relayStates[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // state of relays
 
@@ -62,8 +67,11 @@ void networkInit() {
   #ifdef WIFI_NO_ETHERNET
     Serial.print("Starting WiFi on " + String(ARDUINO_BOARD));
     Serial.print(", looking for SSID '" + wifiCredentials[ssid_index].ssid + "' ... ");
-    WiFi.begin(wifiCredentials[ssid_index].ssid, wifiCredentials[ssid_index].password);
+    WiFi.setSleep(false);
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
+    WiFi.begin(wifiCredentials[ssid_index].ssid, wifiCredentials[ssid_index].password);
   #else
     Serial.print("\nStarting " + String(WEBSERVER_WT32_ETH01_VERSION) + " on " + String(ARDUINO_BOARD));
     Serial.print(" with " + String(SHIELD_TYPE));
@@ -106,6 +114,14 @@ bool getNetworkIsConnected() {
   #endif
 }
 
+String getNetworkMacAddress() {
+  #ifdef WIFI_NO_ETHERNET
+    return WiFi.macAddress();
+  #else
+    return ETH.macAddress();
+  #endif
+}
+
 /* Returns true if just got connected, false if not */
 bool checkConnection() {
   if (wifiReconnectCounter < WIFI_RECONNECT_COUNTER_THRESHOLD) {
@@ -130,8 +146,16 @@ bool checkConnection() {
         break;
       case 2: s = "WiFi Scanned"; break;
       case 3: s = "WiFi Connected"; break;
-      case 4: s = "WiFi ConnFailed"; break;
-      case 5: s = "Connection Lost"; break;
+      case 4:
+        s = "WiFi ConnFailed";
+        WiFi.disconnect(true);
+        wifiReconnectCounter = 0;
+        break;
+      case 5:
+        s = "Connection Lost";
+        WiFi.disconnect(true);
+        wifiReconnectCounter = 0;
+        break;
       case 6: s = "Disconnected"; break;
       default: s = ""; break;
     }
@@ -146,13 +170,15 @@ bool checkConnection() {
       if (s != "Disconnected") Serial.println(s);
       if (s == "Disconnected" || s == "Cable disconnected") {
         oled_clear_from(1, 1, SCREEN_WIDTH / 6 - 1);
-        oled.drawBitmap(120, 8, wifidiscon, 8, 8, OLED_WHITE);
+        oled.drawBitmap(120, 8, disconIcon, 8, 8, OLED_WHITE);
         oled_clear_line(2);
       } else if (s == "WiFi Connected" || s == "Cable connected") {
+#ifdef WIFI_NO_ETHERNET
         if (s == "WiFi Connected") {
           oled_show(1, String(wifiCredentials[ssid_index].ssid));
         }
-        oled.drawBitmap(120, 8, wificon, 8, 8, OLED_WHITE);
+#endif
+        oled.drawBitmap(120, 8, conIcon, 8, 8, OLED_WHITE);
       } else {
         oled_clear_keep_last(1, 1, 1);
         oled_show(1, s, 1, false);
@@ -174,14 +200,15 @@ bool checkConnection() {
     } else {
       s = String(ip2CharArray(getNetworkLocalIp()));
       Serial.println(s);
+      //s = String(ip2CharArrayShort(getNetworkLocalIp()));
       oled_clear_keep_last(1, 1, 1);
       oled_show(1, s, 1, false);
-      // start the web server on port 80
       Serial.println("Starting Web server ...");
       serverInit();
       s = "Server started.";
       Serial.println(s);
       oled_show(2, s);
+      serverStartedEventTime = millis();
     }
     previousConnected = now_connected;
     return now_connected;
@@ -237,7 +264,7 @@ void serverInit() {
 
   // Always-available recovery page
   server.on("/recovery", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", FALLBACK_HTML);
+    request->send(200, "text/html", FALLBACK_HTML);
   });
 
   // Fallback API: device status
@@ -332,4 +359,18 @@ char* ip2CharArray(IPAddress ip) {
   static char a[24];
   sprintf(a, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
   return a;
+}
+
+char* ip2CharArrayShort(IPAddress ip) {
+  static char a[18];
+  sprintf(a, "%d.%d ", ip[2], ip[3]);
+  return a;
+}
+
+uint32_t getServerStartedEventTime() {
+  return serverStartedEventTime;
+}
+
+void clearServerStartedEventTime() {
+  serverStartedEventTime = 0;
 }

@@ -1,9 +1,10 @@
-//#ifndef HW_CONFIG_H
-//#define HW_CONFIG_H
+#pragma once
 
 //#define DEV_BOARD_OLED
+//#define PRESSURE_SENSOR
+
 #define OLED_SSD1306
-#define WIFI_NO_ETHERNET
+//#define WIFI_NO_ETHERNET
 
 #ifdef DEV_BOARD_OLED
   #define I2C_SDA 5
@@ -25,8 +26,8 @@
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------
 
-#define HIGH_LEVEL_PRESSURE      1800000L
-#define LOW_LEVEL_PRESSURE       -240000L
+#define HIGH_LEVEL_PRESSURE      (1800000L)
+#define LOW_LEVEL_PRESSURE       (-240000L)
 // ______________ PCF DIGITAL INPUTS ___________________________
 #define TANK_UPPER_LIMIT2_SWITCH   1    // NO Switch to Gnd, i.e. 0 when FULL  - when 0, disable Well Pump
 #define TANK_UPPER_LIMIT1_SWITCH   2    // NO Switch to Gnd, i.e. 0 when FULL  - when 0, disable Well Pump
@@ -38,11 +39,14 @@
 #define BUTTON_DRIP               14    // Manually start/stop drip  system (PUMP_DRIP  + MAIN_VALVE_DRIP  + DRIP_ZONE_x ) for ${DRIP_MAX_MINUTES}  minutes
 #define BUTTON_ZONE_SWITCH        13    // Manually switch active zone number
 
-#define BUTTON_FILLING_MASK       ((1UL << (BUTTON_FILLING-1)))
-#define BUTTON_GRASS_MASK         ((1UL << (BUTTON_GRASS-1)))
-#define BUTTON_DRIP_MASK          ((1UL << (BUTTON_DRIP-1)))
-#define BUTTON_ZONE_SWITCH_MASK   ((1UL << (BUTTON_ZONE_SWITCH-1)))
-#define BUTTON_MASK     (BUTTON_FILLING_MASK | BUTTON_GRASS_MASK | BUTTON_DRIP_MASK | BUTTON_ZONE_SWITCH_MASK)
+#define BUTTON_FILLING_MASK       (1UL << (BUTTON_FILLING-1))
+#define BUTTON_GRASS_MASK         (1UL << (BUTTON_GRASS-1))
+#define BUTTON_DRIP_MASK          (1UL << (BUTTON_DRIP-1))
+#define BUTTON_ZONE_SWITCH_MASK   (1UL << (BUTTON_ZONE_SWITCH-1))
+
+#define BUTTONS_FILL_GRASS_MASK   (BUTTON_FILLING_MASK | BUTTON_GRASS_MASK)
+#define BUTTONS_GRASS_DRIP_MASK   (BUTTON_GRASS_MASK | BUTTON_DRIP_MASK)
+#define BUTTONS_MASK     (BUTTON_FILLING_MASK | BUTTON_GRASS_MASK | BUTTON_DRIP_MASK | BUTTON_ZONE_SWITCH_MASK)
 
 // ______________ PCF DIGITAL OUTPUTS ___________________________
 // Pumps Output Numbers
@@ -75,5 +79,3 @@
 #define TANK_UPPER_LIMIT_DEFECT     0x08
 #define LEAK_DEFECT                 0x10
 #define PCF_INIT_FAILED             0x20 // PCF8574 init failed
-
-//#endif  //HW_CONFIG_H

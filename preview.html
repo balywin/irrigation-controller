@@ -9,7 +9,7 @@
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f4f6f8; color: #333; font-size: 14px; }
 .app { max-width: 860px; margin: 0 auto; padding: 0 1rem 1rem; }
 .emergency-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; position: sticky; top: 0; z-index: 100; background: #f4f6f8; padding: 1rem 0 0.5rem; }
-.emergency-btn { flex: 1; padding: 0.5rem 0.6rem; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; letter-spacing: 0.04em; background: #e5e7eb; color: #9ca3af; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: 0.4rem; }
+.emergency-btn { flex: 1; padding: 0.5rem 0.6rem; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; letter-spacing: 0.04em; background: #e5e7eb; color: #4b5563; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: 0.4rem; }
 .e-title { text-align: left; display: inline-flex; align-items: center; gap: 0.3rem; }
 .e-state { text-align: center; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .e-action { text-align: right; min-width: 5rem; }
@@ -36,14 +36,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; m
 .e-title-battery .battery-nub { width: 4px; height: 9px; border-radius: 0 2px 2px 0; }
 .emergency-btn.e-active { color: #fff; }
 .emergency-btn.e-paused { color: #fff; filter: brightness(0.7); }
-.emergency-btn.e-inactive { background: #e5e7eb; color: #9ca3af; cursor: default; }
+.emergency-btn.e-inactive { background: #e5e7eb; color: #4b5563; cursor: default; }
 .emergency-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.6); }
 .emergency-btn.e-inactive .e-water-level { color: inherit; }
+.emergency-btn.e-inactive .battery-pct { color: #4b5563; text-shadow: none; }
 .ws-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; flex-shrink: 0; cursor: pointer; }
 .ws-icon { display: inline-block; width: 28px; height: 21px; margin-right: 0.5rem; vertical-align: middle; flex-shrink: 0; cursor: pointer; object-fit: contain; transition: filter 0.3s ease, opacity 0.3s ease; }
-.ws-icon.ws-connected   { filter: none; opacity: 1; }
-.ws-icon.ws-reconnecting{ filter: hue-rotate(60deg); opacity: 1; animation: ws-pulse 1s infinite; }
-.ws-icon.ws-disconnected{ filter: grayscale(1) brightness(0.85); opacity: 0.55; }
+.ws-icon.ws-connected   { filter: saturate(0.85) brightness(1.35); opacity: 1; }
+.ws-icon.ws-reconnecting{ filter: hue-rotate(270deg) saturate(1.4) brightness(1.1); opacity: 1; animation: ws-pulse 1s infinite; }
+.ws-icon.ws-disconnected{ filter: hue-rotate(240deg) saturate(1.3) brightness(1.05); opacity: 1; }
 .ws-connected { background: #16a34a; }
 .ws-reconnecting { background: #f59e0b; animation: ws-pulse 1s infinite; }
 .ws-disconnected { background: #dc2626; }
@@ -101,6 +102,15 @@ nav button.active { color: #2563eb; border-bottom-color: #2563eb; }
 .status-value { font-size: 0.95rem; font-weight: 600; color: #333; }
 .status-on { color: #16a34a; }
 .status-off { color: #9ca3af; }
+.ota-version{color:#6b7280;font-size:0.85rem;margin-bottom:1.25rem}
+.ota-label{display:block;font-weight:600;font-size:0.85rem;color:#374151;margin-bottom:0.3rem}
+.ota-select,.ota-file{width:100%;padding:0.45rem 0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem;background:#fff;margin-bottom:0.75rem}
+.ota-btn{display:block;width:100%;background:#2563eb;color:#fff;border:none;padding:0.6rem 1rem;border-radius:6px;cursor:pointer;font-size:0.95rem;font-weight:600;margin-top:0.25rem}
+.ota-btn:disabled{background:#9ca3af;cursor:default}
+.ota-progress-wrap{margin-top:0.75rem}
+.ota-bar{height:8px;background:#dbeafe;border-radius:4px;overflow:hidden}
+.ota-fill{height:100%;background:#2563eb;width:0%}
+.ota-pct{font-size:0.78rem;color:#6b7280;margin-top:0.25rem;text-align:right}
 @media (max-width: 600px) {
   .app { padding: 0.5rem; }
   .emergency-bar { flex-wrap: wrap; }
@@ -200,6 +210,9 @@ function sectionElToggle(title, enabled, onToggle, ...rows) {
 
 // Emergency bar
 const MOCK_ACTIVE_ZONES = { Grass: [1, 2], Drip: [7, 9] };
+// All zone groups as display strings (mirrors manualZones in the Svelte app).
+const MOCK_ZONE_GROUPS = { Grass: ['1', '2', '34', '5'], Drip: ['79', '6', '8'] };
+const MOCK_ACTIVE_GROUP_IDX = { Grass: 0, Drip: 1 };
 const MOCK_REMAINING = { Grass: 935, Drip: 2640, filling: 245 }; // seconds
 const MOCK_GROUP_REMAINING = { Grass: 47, Drip: 0 }; // seconds
 function fmtRemaining(seconds) {
@@ -327,16 +340,15 @@ function refreshEBar() {
       groupEl.textContent = '';
       groupEl.style.display = 'none';
     }
-    const zones = st === 'active' ? (MOCK_ACTIVE_ZONES[a.id] ?? []) : [];
+    const allGroups = MOCK_ZONE_GROUPS[a.id] ?? [];
+    const activeGrpIdx = st === 'active' ? (MOCK_ACTIVE_GROUP_IDX[a.id] ?? 0) : -1;
     if (zonesEl) {
       zonesEl.innerHTML = '';
-      // Mock: treat first zone as active group (index 0).
-      const activeGrpIdx = st === 'active' ? 0 : -1;
-      zones.forEach((z, zi) => {
-        if (zi > 0) zonesEl.append(' ');
+      allGroups.forEach((grp, gi) => {
+        if (gi > 0) zonesEl.append(' ');
         const s = document.createElement('span');
-        s.textContent = String(z);
-        if (zi === activeGrpIdx) s.className = 'e-zone-active';
+        s.textContent = grp;
+        if (activeGrpIdx >= 0 && gi === activeGrpIdx) s.className = 'e-zone-active';
         zonesEl.append(s);
       });
     }
@@ -389,6 +401,9 @@ function buildManualTab() {
     if (!Array.isArray(mc.presets)) mc.presets = [];
     let groups = normalizeGroups(mc.zones);
     let currentDuration = mc.durationMinutes;
+    // Snapshot of what was last saved to firmware for dirty detection.
+    let savedSnap = JSON.stringify({ zones: JSON.parse(JSON.stringify(groups)), dur: currentDuration });
+    const isPreviewDirty = () => JSON.stringify({ zones: groups, dur: currentDuration }) !== savedSnap;
     const areaColor = AREA_COLORS[idx % AREA_COLORS.length];
     const startBtn = h('button', { class: 'btn', style: 'color:#fff;min-width:6rem;' }, 'Start');
     const STOP_GRACE_MS = 5000;
@@ -426,7 +441,15 @@ function buildManualTab() {
           title: isFiring ? `Group ${gi + 1} — currently firing` : `Group ${gi + 1} — drag to reorder`,
           draggable: 'true'
         }, g.join('') || '·');
-        b.addEventListener('click', () => { currentGroupIdx = gi; renderGroups(); renderZones(); });
+        b.addEventListener('click', () => {
+          currentGroupIdx = gi;
+          // When running, mock a firmware switch by updating active zones
+          if (state.eState[area.id] === 'active') {
+            if (!window.MOCK_ACTIVE_ZONES) window.MOCK_ACTIVE_ZONES = {};
+            MOCK_ACTIVE_ZONES[area.id] = [...(groups[gi] ?? [])];
+          }
+          renderGroups(); renderZones();
+        });
         b.addEventListener('dragstart', (e) => {
           dragSrcIdx = gi;
           e.dataTransfer.effectAllowed = 'move';
@@ -498,13 +521,23 @@ function buildManualTab() {
       const manualActive = st === 'active' && state.eSource[area.id] === 'manual';
       const paused = st === 'paused';
       const running = st === 'active';
-      if (prevRunningPreview && !running && shuffleInp?.checked && groups.length > 1) {
-        prevRunningPreview = running;
-        runShuffle(false);
-        return;
-      }
+      const wasRunning = prevRunningPreview;
       prevRunningPreview = running;
-      if (pendingAction === 'start') {
+      if (!wasRunning && running) {
+        currentGroupIdx = 0;
+        renderGroups(); renderZones();
+      } else if (wasRunning && !running) {
+        if (shuffleInp?.checked && groups.length > 1) {
+          runShuffle(false);
+          return;
+        } else {
+          currentGroupIdx = 0;
+          renderGroups(); renderZones();
+        }
+      }
+      if (pendingAction === 'saving') {
+        startBtn.textContent = 'Saving…'; startBtn.style.background = areaColor; startBtn.disabled = true; startBtn.title = '';
+      } else if (pendingAction === 'start') {
         startBtn.textContent = 'Starting…'; startBtn.style.background = areaColor; startBtn.disabled = true; startBtn.title = '';
       } else if (pendingAction === 'stop') {
         startBtn.textContent = 'Stopping…'; startBtn.style.background = '#ef4444'; startBtn.disabled = true; startBtn.title = '';
@@ -535,17 +568,35 @@ function buildManualTab() {
       if (pendingAction) return;
       const st = state.eState[area.id] ?? 'inactive';
       const manualActive = st === 'active' && state.eSource[area.id] === 'manual';
-      pendingAction = manualActive ? 'stop' : 'start';
       if (!manualActive) pruneEmptyGroups();
-      updateBtn();
-      // Mock backend latency: 800ms before "confirmation".
-      setTimeout(() => {
-        if (manualActive) { state.eState[area.id] = 'inactive'; state.eSource[area.id] = null; }
-        else { state.eState[area.id] = 'active'; state.eSource[area.id] = 'manual'; }
-        pendingAction = null;
+      const doStart = () => {
+        pendingAction = 'start';
         updateBtn();
-        refreshEBar();
-      }, 800);
+        // Mock backend latency: 800ms before "confirmation".
+        setTimeout(() => {
+          state.eState[area.id] = 'active'; state.eSource[area.id] = 'manual';
+          pendingAction = null;
+          updateBtn();
+          refreshEBar();
+        }, 800);
+      };
+      if (manualActive) {
+        pendingAction = 'stop';
+        updateBtn();
+        setTimeout(() => {
+          state.eState[area.id] = 'inactive'; state.eSource[area.id] = null;
+          pendingAction = null;
+          updateBtn();
+          refreshEBar();
+        }, 800);
+      } else if (isPreviewDirty()) {
+        // Simulate save-before-start: brief "Saving…" phase then proceed.
+        pendingAction = 'saving';
+        updateBtn();
+        setTimeout(() => { savedSnap = JSON.stringify({ zones: groups, dur: currentDuration }); doStart(); }, 300);
+      } else {
+        doStart();
+      }
     });
     let shuffleInp;
     const shuffleLbl = h('label', { class: 'toggle' });
@@ -568,10 +619,8 @@ function buildManualTab() {
         const [active] = arr.splice(activeIdx, 1);
         shuffleArr(arr);
         const slots = [];
-        for (let i = 0; i <= arr.length; i++) if (i !== activeIdx) slots.push(i);
-        const newIdx = slots.length > 0
-          ? slots[Math.floor(Math.random() * slots.length)]
-          : 0;
+        for (let i = 0; i <= arr.length; i++) slots.push(i);
+        const newIdx = slots[Math.floor(Math.random() * slots.length)];
         arr.splice(newIdx, 0, active);
         groups = arr;
         currentGroupIdx = newIdx;
@@ -694,21 +743,25 @@ function buildManualTab() {
 
   // Filling card
   const f = APP_CONFIG.filling;
+  const MOCK_WATER_LEVEL = 72; // mock sensor value
+  const tankFull = MOCK_WATER_LEVEL >= 100;
   const fBtn = h('button', { class: 'btn', style: 'color:#fff;min-width:6rem;' }, 'Start');
+  const fReason = h('span', { style: 'font-size:0.75rem;color:#9ca3af;' }, '');
   let fillingPending = null;
   function updateFBtn() {
     const st = state.eState['filling'] ?? 'inactive';
     const manualActive = st === 'active' && state.eSource['filling'] === 'manual';
-    const paused = st === 'paused';
-    if (fillingPending === 'start') { fBtn.textContent = 'Starting…'; fBtn.style.background = '#fb923c'; fBtn.disabled = true; fBtn.title = ''; }
-    else if (fillingPending === 'stop') { fBtn.textContent = 'Stopping…'; fBtn.style.background = '#ef4444'; fBtn.disabled = true; fBtn.title = ''; }
-    else if (manualActive) { fBtn.textContent = 'Stop'; fBtn.style.background = '#ef4444'; fBtn.disabled = false; fBtn.title = ''; }
-    else { fBtn.textContent = 'Start'; fBtn.style.background = '#fb923c'; fBtn.disabled = paused; fBtn.title = paused ? 'Paused by schedule' : ''; }
+    if (fillingPending === 'start') { fBtn.textContent = 'Starting…'; fBtn.style.background = '#fb923c'; fBtn.disabled = true; }
+    else if (fillingPending === 'stop') { fBtn.textContent = 'Stopping…'; fBtn.style.background = '#ef4444'; fBtn.disabled = true; }
+    else if (manualActive) { fBtn.textContent = 'Stop'; fBtn.style.background = '#ef4444'; fBtn.disabled = false; }
+    else if (tankFull) { fBtn.textContent = 'Start'; fBtn.style.background = '#fb923c'; fBtn.disabled = true; }
+    else { fBtn.textContent = 'Start'; fBtn.style.background = '#fb923c'; fBtn.disabled = false; }
+    fReason.textContent = (!manualActive && !fillingPending && tankFull) ? `Tank full (${MOCK_WATER_LEVEL}%)` : '';
   }
   updaters['filling'] = updateFBtn;
   updateFBtn();
   fBtn.addEventListener('click', () => {
-    if (fillingPending) return;
+    if (fillingPending || tankFull) return;
     const st = state.eState['filling'] ?? 'inactive';
     const manualActive = st === 'active' && state.eSource['filling'] === 'manual';
     fillingPending = manualActive ? 'stop' : 'start';
@@ -723,11 +776,12 @@ function buildManualTab() {
   });
   const fillingCard = h('div', { class: `card${APP_CONFIG.filling.enabled === false ? ' content-disabled' : ''}`, style: '--area-color:#fb923c;border-color:var(--area-color);border-width:2px;padding:0.5rem 1rem;' },
     h('div', { style: 'display:flex;align-items:center;gap:1rem;flex-wrap:wrap;' },
-      h('h3', { style: 'margin:0;' }, 'Filling'),
+      h('h3', { style: 'margin:0;' }, 'Automatic Filling'),
       fBtn,
+      fReason,
       h('span', { style: 'margin-left:auto;display:flex;gap:1rem;align-items:center;' },
         h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, `Pump ${f.pump_id}`), h('span', { class: 'status-value status-off' }, 'OFF')),
-        h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, 'Water'), h('span', { class: 'status-value' }, '72%'))))
+        h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, 'Water'), h('span', { class: 'status-value' }, `${MOCK_WATER_LEVEL}%`))))
   );
 
   return h('div', {}, fillingCard, ...cards);
@@ -740,7 +794,14 @@ function buildScheduleTab(area, idx) {
   const suspInput = numInput(sched.suspendAboveTemp); suspInput.style.width = '55px'; suspInput.disabled = !sched.suspendAboveTempEnabled;
   const rainInput = numInput(sched.suspendOnRainAbove); rainInput.style.width = '55px'; rainInput.disabled = !sched.suspendOnRainEnabled;
   const schedContent = h('div', {},
-    ...sched.schedules.map((s, i) => buildScheduleCard(s, i, area)),
+    ...sched.schedules.map((s, i) => buildScheduleCard(s, i, area, () => {
+      const st = state.eState[area.id] ?? 'inactive';
+      if (st === 'active') return;
+      state.eState[area.id] = 'active';
+      state.eSource[area.id] = 'schedule';
+      refreshEBar();
+      buildNav();
+    })),
     h('button', { class: 'btn btn-secondary' }, '+ Add Schedule')
   );
   const suspSpan = h('span', { style: 'display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;' },
@@ -767,9 +828,23 @@ function normalizeSchedZones(zones) {
   return zones.map(z => [Number(z)]);
 }
 
-function buildScheduleCard(sched, index, area) {
+function buildScheduleCard(sched, index, area, onstart) {
   const card = h('div', { class: 'card', style: sched.enabled ? '' : 'opacity:0.65' });
-  const enableToggle = toggle(sched.enabled, c => { card.style.opacity = c ? '' : '0.65'; });
+  let schedEnabled = sched.enabled;
+  const startBtn = h('button', { class: 'btn btn-sm btn-primary' }, 'Start');
+  const updateStartBtn = () => {
+    const st = state.eState[area.id] ?? 'inactive';
+    const running = st === 'active';
+    const noZones = (sched.zones ?? []).length === 0;
+    startBtn.disabled = running || !schedEnabled || noZones;
+    startBtn.title = running ? 'Area already running' : !schedEnabled ? 'Schedule disabled' : noZones ? 'No zones configured' : '';
+  };
+  startBtn.addEventListener('click', () => { if (!startBtn.disabled && onstart) onstart(); });
+  const enableToggle = toggle(sched.enabled, c => {
+    card.style.opacity = c ? '' : '0.65';
+    schedEnabled = c;
+    updateStartBtn();
+  });
 
   let groups = normalizeSchedZones(sched.zones);
   let currentGroupIdx = 0;
@@ -873,9 +948,10 @@ function buildScheduleCard(sched, index, area) {
     h('button', { class: 'btn btn-secondary btn-sm' }, '+ Add time'));
   const srOff = numInput(sched.sunriseSchedule.sunriseOffsetMinutes); srOff.style.width = '55px'; srOff.disabled = !sched.sunriseSchedule.enabled;
   const ssOff = numInput(sched.sunsetSchedule.sunsetOffsetMinutes); ssOff.style.width = '55px'; ssOff.disabled = !sched.sunsetSchedule.enabled;
+  updateStartBtn();
   card.append(
     h('div', { class: 'card-header' },
-      h('div', { style: 'display:flex;align-items:center;gap:0.5rem;' }, h('h3', { style: 'margin:0;' }, `${area.id} Schedule ${index+1}`), enableToggle),
+      h('div', { style: 'display:flex;align-items:center;gap:0.5rem;' }, h('h3', { style: 'margin:0;' }, `${area.id} Schedule ${index+1}`), enableToggle, startBtn),
       h('button', { class: 'btn btn-danger' }, 'Delete')),
     h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:flex-start;' }, h('span', {}, 'Zones in group'), zoneBox),
     h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;align-items:center;' }, h('span', {}, 'Sequence'), groupChipsBox),
@@ -921,8 +997,34 @@ function buildSettingsTab() {
 }
 
 function buildFirmwareTab() {
-  return sectionEl('Firmware', h('div', { style: 'display:flex;align-items:center;justify-content:center;height:200px;color:#9ca3af;font-size:0.9rem;' },
-    'Firmware OTA page loads from /update when connected to device'));
+  const MOCK_FW_VERSION = '1.0.0';
+  const fileInput = h('input', { type: 'file', class: 'ota-file', accept: '.bin', id: 'ota-file' });
+  const uploadBtn = h('button', { class: 'ota-btn', disabled: true }, 'Upload');
+  const progressWrap = h('div', { class: 'ota-progress-wrap', style: 'display:none' },
+    h('div', { class: 'ota-bar' }, h('div', { class: 'ota-fill', id: 'ota-fill' })),
+    h('div', { class: 'ota-pct', id: 'ota-pct' }, '0%'));
+  const statusDiv = h('div', { id: 'ota-status', style: 'margin-top:0.6rem;font-size:0.88rem;min-height:1.2em' });
+
+  fileInput.addEventListener('change', () => { uploadBtn.disabled = !fileInput.files.length; });
+  uploadBtn.addEventListener('click', () => {
+    if (!fileInput.files.length) return;
+    uploadBtn.disabled = true;
+    statusDiv.style.color = '#374151'; statusDiv.textContent = 'Preview only — not connected to device.';
+  });
+
+  return h('div', {},
+    h('h2', { style: 'color:#1e40af;margin:0 0 0.25rem' }, 'OTA Update'),
+    h('p', { class: 'ota-version' }, 'Current firmware: ', h('strong', {}, MOCK_FW_VERSION)),
+    h('div', { class: 'section', style: 'padding:1.25rem' },
+      h('label', { class: 'ota-label', for: 'ota-mode' }, 'Update type'),
+      h('select', { class: 'ota-select', id: 'ota-mode' },
+        h('option', { value: 'firmware' }, 'Firmware (.bin)'),
+        h('option', { value: 'fs' }, 'Filesystem (.bin)')),
+      h('label', { class: 'ota-label', for: 'ota-file' }, 'Binary file'),
+      fileInput,
+      uploadBtn,
+      progressWrap,
+      statusDiv));
 }
 
 // Navigation

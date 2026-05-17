@@ -11,6 +11,9 @@
 #define _NTP_LOGLEVEL_                3
 
 #include <NTP.h>
+#ifdef WIFI_NO_ETHERNET
+  #include <WiFi.h>
+#endif
 #include <WiFiUdp.h>
 #include <RTClib.h>
 #include <HX710AB.h>
@@ -32,11 +35,14 @@ ControllerConfig controllerConfig;
 uint32_t fillingMaxMs;
 uint32_t grassMaxMs;
 uint32_t dripMaxMs;
-// Per-run override for the per-zone-group switch interval (ms). Set by WS
-// `start` command's `durationMinutes`; 0 = fall back to the default formula
-// `grassMaxMs / (numberOfGrassZones - 1)`. Cleared on the next applyConfig.
-uint32_t grassGroupSwitchMs = 0;
 uint32_t levelFilteringMsThreshold;
+uint32_t macDisplayUntil = 0;
+
+// Per-run zone-group state.  Populated by setGrassZoneGroups / setDripZoneGroups
+// (called from WS start command or schedule engine) before starting irrigation.
+// count==0 → legacy flat single-zone cycling (hardware-button fallback).
+ZoneRunConfig gGrassRun = {};
+ZoneRunConfig gDripRun  = {};
 uint32_t buttonFilteringCounterThreshold;
 
 // ------------- Time --------------------------------
@@ -50,10 +56,13 @@ unsigned long lastTimeFillingRequested = 0;
 unsigned long lastTimeGrassIrrigationRequested = 0;
 unsigned long lastTimeDripIrrigationRequested = 0;
 unsigned long lastTimeGrassZoneSwitched = 0;
-uint32_t oldTusCnt;
-uint32_t oldTlsCnt;
+unsigned long lastTimeDripZoneSwitched  = 0;
+uint32_t oldTusCnt = 0;
+uint32_t oldTlsCnt = 0;
 bool prevGrassIrrigationState = false;
-uint32_t grassPumpStartTime;
+uint32_t grassPumpStartTime = 0;
+bool prevDripIrrigationState = false;
+uint32_t dripPumpStartTime = 0;
 uint32_t diag = NO_DEFECT;
 uint32_t prevDiag = diag;
 
@@ -62,7 +71,7 @@ uint16_t previousFilteredState;
 uint16_t iState = 0xFFFF;
 uint16_t iFiltered;
 // -------------- Pump related -----------------------
-uint32_t pressureRaw = 0;
+int32_t pressureRaw = 0;
 uint16_t ultrasonic = 0;
 bool fillingEnabled = false;
 bool prevFillingEnabled = false;
@@ -88,7 +97,7 @@ const unsigned char bidon[] PROGMEM = {
 };
 
 FilterState filterState = {0};
-uint16_t lastButState = BUTTON_MASK;
+uint16_t lastButState = BUTTONS_MASK;
 
 bool timeSet = false;
 bool rtcReady = false;
@@ -144,13 +153,18 @@ void applyAppConfig(const JsonDocument& doc) {
   grassZones[3] = GRASS_ZONE_4;
   grassZones[4] = GRASS_ZONE_5;
   grassZones[5] = GRASS_ZONE_6;
+
+  dripZones[0] = DRIP_ZONE_1;
+  dripZones[1] = DRIP_ZONE_2;
+  dripZones[2] = DRIP_ZONE_3;
+  // dripZones[3+] remain 0 until hw_config defines more drip zone outputs
 }
 
 void showPressure(uint8_t line, uint8_t size) {
   char pressure[24];
-  sprintf(pressure, "%d ", ((long) pressureRaw) / 1024);
+  sprintf(pressure, "%ld ", pressureRaw / 1024L);
   Serial.print("Pressure raw value: ");
-  Serial.println((long) pressureRaw);
+  Serial.println(static_cast<long>(pressureRaw));
   oled_show(line, pressure, size);
 }
 
@@ -158,7 +172,7 @@ void showUltrasonic(uint8_t line, uint8_t size) {
   char ultrasonicStr[24];
   sprintf(ultrasonicStr, "%u ", ultrasonic);
   Serial.print("uSonic mm: ");
-  Serial.println((long) ultrasonic);
+  Serial.println(static_cast<long>(ultrasonic));
   oled_show(line, ultrasonicStr, size);
 }
 
@@ -168,51 +182,89 @@ void showTime() {
   char pcf_status = pcf_init_code && timeBlink ? 'E' : ' ';
   if (rtcReady) {
     sprintf(tm, "%02u:%02u:%02u %c", rtc.now().hour(), rtc.now().minute(), rtc.now().second(), pcf_status);
-    sprintf(temp, "%.1f%cC %d  ", rtc.getTemperature(), (char) 0xF7, fillingMaxMs / 60000UL);
+    sprintf(temp, "%.1f%cC     ", rtc.getTemperature(), static_cast<char>(0xF7));
     temp[11] = '\0';
   } else {
     sprintf(tm, "%02u:%02u:%02u %c", ntp.hours(), ntp.minutes(), ntp.seconds(), pcf_status);
-    sprintf(temp, "--.-- %cC     ", (char) 0xF7);
+    sprintf(temp, "--.-- %cC     ", static_cast<char>(0xF7));
     temp[11] = '\0';
   }
   oled_show_at(0, 0, temp);
   oled_show_at(11, 0, timeSet || timeBlink ? tm : "           ");
+
+  if (getServerStartedEventTime() != 0) {
+    if (millis() > getServerStartedEventTime() + 5000UL) {
+      oled_clear_line(2);
+      clearServerStartedEventTime();
+    }
+  } else {
+    if (fillingRequested) {
+      sprintf(temp, "%02lu:%02lu", getFillingRemainingMs() / 60000UL, (getFillingRemainingMs() / 1000UL) % 60);
+      oled_show_at(0, 2, temp);
+    }
+    if (isGrassIrrigating()) {
+      sprintf(temp, "%02lu:%02lu", getGrassRemainingMs()   / 60000UL, (getGrassRemainingMs()   / 1000UL) % 60);
+      oled_show_at(6, 2, temp);
+    }
+    if (isDripIrrigating()) {
+      sprintf(temp, "%02lu:%02lu", getDripRemainingMs()    / 60000UL, (getDripRemainingMs()    / 1000UL) % 60);
+      oled_show_at(12, 2, temp);
+    }
+  }
   timeBlink = !timeBlink;
 }
 
 void showStates() {
-  char tm[14];
+  char tm[24];
   char states[24];
   char pumpStates[14];
-  int32_t irrigationRemainingMinutes = (millis() - lastTimeGrassIrrigationRequested) / 60000L;
-  sprintf(states, "%04X %d%d %d%d G%02d L%d ", iState, fillingRequested, fillingEnabled,
-          grassIrrigationRequested, drainingDisabled, irrigationRemainingMinutes, leakageDetectorCounter);
-  //Serial.println(states);
-  oled_show(7, states, 1);
 
-  uint32_t tusCnt = (millis() - filterState.counter[TANK_UPPER_LIMIT1_SWITCH - 1])/100;
-  uint32_t tlsCnt = (millis() - filterState.counter[TANK_LOWER_LIMIT_SWITCH - 1])/100;
-  sprintf(pumpStates, "%c  %s%c  ",
-          fillingRequested ? 'F' : ' ',
-          grassIrrigationRequested ? "G" + String(grass_zone_index) : "  ", 
-          dripIrrigationRequested ? 'D' : ' ');
-  if (tusCnt > 1) {
-    if (tusCnt != oldTusCnt) {
-      pumpStates[3] = 0;
-      sprintf(states, "%s U%02u", pumpStates, tusCnt/10);
-      oled_show_at(0, 4, states, 2);
-    }
-  } else if (tlsCnt != oldTlsCnt) {
-    if (tlsCnt > 1) {
-      pumpStates[3] = 0;
-      sprintf(states, "%s L%02u", pumpStates, tlsCnt/10);
-      oled_show_at(0, 4, states, 2);
-    }
-    oldTlsCnt = tlsCnt;
-  } else {
-    oled_show_at(0, 4, pumpStates, 2);
+#ifdef WIFI_NO_ETHERNET
+  if (getNetworkIsConnected()) {
+    sprintf(states, "%d", WiFi.RSSI());
+    oled_show_at(16, 1, states);
   }
-  oldTusCnt = tusCnt;
+#endif
+  if (millis() >= macDisplayUntil) {
+
+    uint32_t irrigationRemainingMinutes = (millis() - lastTimeGrassIrrigationRequested) / 60000UL;
+    sprintf(states, "%04X %d%d %d%d G%02d L%d ", iState, fillingRequested, fillingEnabled,
+            grassIrrigationRequested, !drainingDisabled, irrigationRemainingMinutes, leakageDetectorCounter);
+    //Serial.println(states);
+    oled_show(7, states, 1);
+  }
+
+  String grassIndicator = "";
+  if (grassIrrigationRequested) {
+    grassIndicator = "G";
+    if (gGrassRun.count > 0) {
+      uint8_t sz = gGrassRun.sizes[gGrassRun.activeIdx];
+      for (uint8_t z = 0; z < sz && grassIndicator.length() < 4; z++) {
+        grassIndicator += String(gGrassRun.zoneIds[gGrassRun.activeIdx][z]);
+      }
+    } else {
+      grassIndicator += String(grass_zone_index);
+    }
+  }
+  // Fixed format: F + 1sp + 4-char grass (padded) + 1sp — 'D' always at col 6
+  snprintf(pumpStates, sizeof(pumpStates), "%c %-4s",
+           fillingRequested ? 'F' : ' ',
+           grassIndicator.c_str());
+
+  uint32_t tensMax = 1UL;
+  uint8_t iMax = 0;
+  for (uint8_t z = TANK_UPPER_LIMIT2_SWITCH; z <= TANK_LOWER_LIMIT_SWITCH; z++) {
+    uint32_t tens = (millis() - filterState.counter[z])/100;
+    if (tensMax < tens) {
+      tensMax = tens;
+      iMax = z;
+    }
+  }
+  sprintf(states, "%02lu", tensMax/10UL);
+  oled_show_at(19, 2, iMax != 0 ? states : "  ", 1);
+
+  oled_show_at(0, 4, pumpStates, 2);
+  oled_show_at(6, 4, dripIrrigationRequested ? "D" : " ", 2);
 
   if (filterState.last_state != previousFilteredState) {
     previousFilteredState = filterState.last_state;
@@ -222,8 +274,8 @@ void showStates() {
   }
 
   char level = level_4 ? '4' : level_3 ? '3' : level_2 ? '2' : level_1 ? '1' : '0';
-  oled.fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0); oled.drawBitmap(6 * 2 * 9 + 2, 8 * 3, bidon, 16, 24, OLED_WHITE);
-  oled.setCursor(6 * 2 * 9 + 5, 8 * 3 + 5); oled.setTextSize(2); oled.print(level); oled.display();
+  oled.fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0); oled.drawBitmap(6 * 2 * 9 + 1, 8 * 3, bidon, 16, 24, OLED_WHITE);
+  oled.setCursor(6 * 2 * 9 + 4, 8 * 3 + 5); oled.setTextSize(2); oled.print(level); oled.display();
   if (prevLevel != level) {
     Serial.print("Tank Level: "); Serial.println(level);
     prevLevel = level;
@@ -233,8 +285,8 @@ void showStates() {
 void printTestValues(const JsonDocument& doc) {
   // Read values
   const char* deviceName = doc["device_name"];
-  int interval = doc["interval"];
-  bool enabled = doc["enabled"];
+  const int interval = doc["interval"];
+  const bool enabled = doc["enabled"];
 
   // Print values
   Serial.println("Config loaded:");
@@ -285,16 +337,21 @@ void setup() {
 #ifndef DEV_BOARD_OLED 
   if (pcf_init_code) diag |= PCF_INIT_FAILED;
 #endif
-  String s = "Init PCFs... " + (pcf_init_code == 0 ? "OK" : "Error " + String(pcf_init_code, HEX));
+  String s = "PCFs... " + (pcf_init_code == 0 ? "OK" : "Error " + String(pcf_init_code, HEX));
   Serial.println(s);oled_show(0, s);
   pressureSensor.begin();
   //s = "Init H710B... " + (code == HX710B_OK ? "OK" : "Error " + String(code, HEX));
-  Serial.println(s);oled_show(0, s);
+  //Serial.println(s);oled_show(0, s);
 
   test_pcf();
 
   networkInit();
-  oled_show(1, "Network started.");
+  {
+    oled_show(1, "Network started.");
+    String macStr = getNetworkMacAddress();
+    oled_show(7, macStr.c_str());
+    macDisplayUntil = millis() + 8000UL;
+  }
 
   changeGrassZone(0);
 } 
@@ -311,12 +368,61 @@ void closeDripValves() {
   }
 }
 
+// Open all zones in a grass group; close all others.
+static void applyGrassGroup(uint8_t groupIdx) {
+  closeGrassValves();
+  if (groupIdx >= gGrassRun.count) return;
+  uint8_t sz = gGrassRun.sizes[groupIdx];
+  for (uint8_t z = 0; z < sz; z++) {
+    uint8_t id = gGrassRun.zoneIds[groupIdx][z];  // 1-based
+    if (id >= 1 && id <= MAX_NUMBER_OF_GRASS_ZONES)
+      setOutput(grassZones[id - 1], false);  // false = open (active-low relay)
+  }
+}
+
+// Open all zones in a drip group; close all others.
+static void applyDripGroup(uint8_t groupIdx) {
+  closeDripValves();
+  if (groupIdx >= gDripRun.count) return;
+  uint8_t sz = gDripRun.sizes[groupIdx];
+  for (uint8_t z = 0; z < sz; z++) {
+    uint8_t id = gDripRun.zoneIds[groupIdx][z];  // 1-based
+    if (id >= 1 && id <= MAX_NUMBER_OF_DRIP_ZONES && dripZones[id - 1] != 0)
+      setOutput(dripZones[id - 1], false);
+  }
+}
+
+void switchGrassGroup(uint8_t newIdx) {
+  if (newIdx >= gGrassRun.count) return;
+  uint32_t elapsed = millis() - lastTimeGrassZoneSwitched;
+  if (elapsed > gGrassRun.groupMs) elapsed = gGrassRun.groupMs;
+  gGrassRun.groupElapsedMs[gGrassRun.activeIdx] += elapsed;
+  gGrassRun.activeIdx = newIdx;
+  lastTimeGrassZoneSwitched = millis() - gGrassRun.groupElapsedMs[newIdx];
+  applyGrassGroup(newIdx);
+}
+
+void switchDripGroup(uint8_t newIdx) {
+  if (newIdx >= gDripRun.count) return;
+  uint32_t elapsed = millis() - lastTimeDripZoneSwitched;
+  if (elapsed > gDripRun.groupMs) elapsed = gDripRun.groupMs;
+  gDripRun.groupElapsedMs[gDripRun.activeIdx] += elapsed;
+  gDripRun.activeIdx = newIdx;
+  lastTimeDripZoneSwitched = millis() - gDripRun.groupElapsedMs[newIdx];
+  applyDripGroup(newIdx);
+}
+
 void changeGrassZone(int8_t step) {
-  grass_zone_index += step;
-  if (grass_zone_index >= controllerConfig.numberOfGrassZones) {
-    grass_zone_index = 1;
-  } else if (grass_zone_index < 1) {
-    grass_zone_index = controllerConfig.numberOfGrassZones - 1;
+  if (gGrassRun.count > 0) {
+    int ni = static_cast<int>(gGrassRun.activeIdx) + step;
+    if (ni < 0) ni = static_cast<int>(gGrassRun.count) - 1;
+    if (ni >= static_cast<int>(gGrassRun.count)) ni = 0;
+    gGrassRun.activeIdx = static_cast<uint8_t>(ni);
+    applyGrassGroup(gGrassRun.activeIdx);
+  } else {
+    grass_zone_index += step;
+    if (grass_zone_index >= controllerConfig.numberOfGrassZones) grass_zone_index = 1;
+    else if (grass_zone_index < 1) grass_zone_index = controllerConfig.numberOfGrassZones - 1;
   }
   lastTimeGrassZoneSwitched = millis();
 }
@@ -327,24 +433,38 @@ void startGrassIrrigation() {
   lastTimeGrassIrrigationRequested = millis();
   lastTimeGrassZoneSwitched = millis();
   grass_zone_index = 0;
+  gGrassRun.activeIdx = 0;
+  if (gGrassRun.count > 0) applyGrassGroup(0);
 }
 
 void stopGrassIrrigation() {
   grassIrrigationRequested = false;
+  oled_clear_line(2);
   closeGrassValves();
+  gGrassRun = {};
 }
 
 void startDripIrrigation() {
   dripIrrigationRequested = true;
   if (level_1) drainingDisabled = false;
   lastTimeDripIrrigationRequested = millis();
+  lastTimeDripZoneSwitched = millis();
+  gDripRun.activeIdx = 0;
   leakageDetectorCounter = 0;
+  if (gDripRun.count > 0) applyDripGroup(0);
 }
 
 void stopDripIrrigation() {
   dripIrrigationRequested = false;
+  oled_clear_line(2);
   closeDripValves();
+  gDripRun = {};
 }
+
+void setGrassZoneGroups(const ZoneRunConfig& cfg) { gGrassRun = cfg; }
+void setDripZoneGroups(const ZoneRunConfig& cfg)  { gDripRun  = cfg; }
+const ZoneRunConfig& getGrassRunConfig() { return gGrassRun; }
+const ZoneRunConfig& getDripRunConfig()  { return gDripRun; }
 
 bool isGrassIrrigating() { return grassIrrigationRequested; }
 bool isDripIrrigating()  { return dripIrrigationRequested; }
@@ -362,6 +482,7 @@ void startFilling() {
 
 void stopFilling() {
   fillingRequested = false;
+  oled_clear_line(2);
 }
 
 bool isFillingActive() { return fillingRequested; }
@@ -370,28 +491,71 @@ bool isDrainingDisabled() { return drainingDisabled; }
 int8_t getGrassZoneIndex() { return grass_zone_index; }
 uint32_t getPressureRawValue() { return pressureRaw; }
 
-// Remaining-time accessors (ms). Return 0 when the corresponding subsystem
-// is not running, to make 'no-data' detectable on the consumer side.
+// Remaining-time accessors (ms). Return 0 when not running.
 uint32_t getGrassRemainingMs() {
-  if (!grassIrrigationRequested || grassMaxMs == 0) return 0;
+  if (!grassIrrigationRequested) return 0;
+  if (gGrassRun.count > 0 && gGrassRun.groupMs > 0) {
+    uint32_t groupElapsed = millis() - lastTimeGrassZoneSwitched;
+    uint32_t groupLeft = groupElapsed >= gGrassRun.groupMs ? 0 : gGrassRun.groupMs - groupElapsed;
+    uint32_t remaining = gGrassRun.count - gGrassRun.activeIdx;
+    return groupLeft + (remaining > 1 ? (remaining - 1) * gGrassRun.groupMs : 0);
+  }
+  if (grassMaxMs == 0) return 0;
   uint32_t elapsed = millis() - lastTimeGrassIrrigationRequested;
-  return elapsed >= grassMaxMs ? 0 : (grassMaxMs - elapsed);
+  return elapsed >= grassMaxMs ? 0 : grassMaxMs - elapsed;
 }
 uint32_t getGrassGroupRemainingMs() {
-  if (!grassIrrigationRequested || grassMaxMs == 0 || controllerConfig.numberOfGrassZones <= 1) return 0;
-  uint32_t perZoneMs = grassGroupSwitchMs > 0 ? grassGroupSwitchMs : (grassMaxMs / (controllerConfig.numberOfGrassZones - 1));
+  if (!grassIrrigationRequested) return 0;
+  if (gGrassRun.count > 0 && gGrassRun.groupMs > 0) {
+    uint32_t elapsed = millis() - lastTimeGrassZoneSwitched;
+    return elapsed >= gGrassRun.groupMs ? 0 : gGrassRun.groupMs - elapsed;
+  }
+  if (grassMaxMs == 0 || controllerConfig.numberOfGrassZones <= 1) return 0;
+  uint32_t perZoneMs = grassMaxMs / (controllerConfig.numberOfGrassZones - 1);
   uint32_t elapsed = millis() - lastTimeGrassZoneSwitched;
-  return elapsed >= perZoneMs ? 0 : (perZoneMs - elapsed);
+  return elapsed >= perZoneMs ? 0 : perZoneMs - elapsed;
 }
 uint32_t getDripRemainingMs() {
-  if (!dripIrrigationRequested || dripMaxMs == 0) return 0;
+  if (!dripIrrigationRequested) return 0;
+  if (gDripRun.count > 0 && gDripRun.groupMs > 0) {
+    uint32_t groupElapsed = millis() - lastTimeDripZoneSwitched;
+    uint32_t groupLeft = groupElapsed >= gDripRun.groupMs ? 0 : gDripRun.groupMs - groupElapsed;
+    uint32_t remaining = gDripRun.count - gDripRun.activeIdx;
+    return groupLeft + (remaining > 1 ? (remaining - 1) * gDripRun.groupMs : 0);
+  }
+  if (dripMaxMs == 0) return 0;
   uint32_t elapsed = millis() - lastTimeDripIrrigationRequested;
-  return elapsed >= dripMaxMs ? 0 : (dripMaxMs - elapsed);
+  return elapsed >= dripMaxMs ? 0 : dripMaxMs - elapsed;
+}
+uint32_t getDripGroupRemainingMs() {
+  if (!dripIrrigationRequested) return 0;
+  if (gDripRun.count > 0 && gDripRun.groupMs > 0) {
+    uint32_t elapsed = millis() - lastTimeDripZoneSwitched;
+    return elapsed >= gDripRun.groupMs ? 0 : gDripRun.groupMs - elapsed;
+  }
+  return 0;
 }
 uint32_t getFillingRemainingMs() {
   if (!fillingRequested || fillingMaxMs == 0) return 0;
   uint32_t elapsed = millis() - lastTimeFillingRequested;
-  return elapsed >= fillingMaxMs ? 0 : (fillingMaxMs - elapsed);
+  return elapsed >= fillingMaxMs ? 0 : fillingMaxMs - elapsed;
+}
+
+bool getRtcTime(uint8_t& hour, uint8_t& minute, uint8_t& dow) {
+  if (rtcReady) {
+    DateTime now = rtc.now();
+    hour   = now.hour();
+    minute = now.minute();
+    dow    = now.dayOfTheWeek();  // 0=Sun, 1=Mon…6=Sat
+    return true;
+  }
+  if (timeSet) {
+    hour   = ntp.hours();
+    minute = ntp.minutes();
+    dow    = 0;  // NTP library doesn't expose weekday; caller should ignore dow
+    return true;
+  }
+  return false;
 }
 
 uint8_t getWaterLevelPercent() {
@@ -405,8 +569,8 @@ uint8_t getWaterLevelPercent() {
 bool getPumpWellActive() { return getPumpWell(); }
 bool getPumpGrassActive() { return getPumpGrass(); }
 bool getPumpDripActive() { return getPumpDrip(); }
-bool getGrassMainValveActive() { return !getOutput(MAIN_VALVE_GRASS); }
-bool getDripMainValveActive() { return !getOutput(MAIN_VALVE_DRIP); }
+bool getGrassMainValveActive() { return getGrassMainValve(); }
+bool getDripMainValveActive() { return getDripMainValve(); }
 
 void loop() {
   if (checkConnection()) {       // If just got connected
@@ -427,18 +591,53 @@ void loop() {
     lastTimeShowTime = currentTime;
 
     if (grassIrrigationRequested) {
-      uint32_t grassIrrigationTime = currentTime - lastTimeGrassIrrigationRequested;
-      if (grassIrrigationTime >= grassMaxMs) {
-        grassIrrigationRequested = false;
-        closeGrassValves();
-        Serial.println("Grass irrigation completed in " + String(grassMaxMs / 60000UL) + " minutes");
-      } else {
-        uint32_t switchMs = grassGroupSwitchMs > 0 ? grassGroupSwitchMs : (grassMaxMs / (controllerConfig.numberOfGrassZones-1));
-        if ((currentTime - lastTimeGrassZoneSwitched) >= switchMs) {
-          changeGrassZone(+1);
+      if (gGrassRun.count > 0 && gGrassRun.groupMs > 0) {
+        // Group-based: cycle through zone groups
+        uint32_t groupElapsed = currentTime - lastTimeGrassZoneSwitched;
+        if (groupElapsed >= gGrassRun.groupMs) {
+          uint8_t nextIdx = gGrassRun.activeIdx + 1;
+          if (nextIdx >= gGrassRun.count) {
+            stopGrassIrrigation();
+            Serial.println("Grass irrigation completed (all groups done)");
+          } else {
+            switchGrassGroup(nextIdx);
+            Serial.println("Grass → group " + String(nextIdx));
+          }
         }
-        for (uint8_t i = 1; i < controllerConfig.numberOfGrassZones; i++) {
-          setOutput(grassZones[i], i != grass_zone_index);
+      } else {
+        // Legacy flat single-zone cycling (hardware-button start)
+        uint32_t elapsed = currentTime - lastTimeGrassIrrigationRequested;
+        if (elapsed >= grassMaxMs) {
+          stopGrassIrrigation();
+          Serial.println("Grass irrigation completed (legacy)");
+        } else {
+          uint32_t switchMs = controllerConfig.numberOfGrassZones > 1
+            ? grassMaxMs / (controllerConfig.numberOfGrassZones - 1) : grassMaxMs;
+          if ((currentTime - lastTimeGrassZoneSwitched) >= switchMs) changeGrassZone(+1);
+          for (uint8_t i = 1; i < controllerConfig.numberOfGrassZones; i++)
+            setOutput(grassZones[i], i != grass_zone_index);
+        }
+      }
+    }
+
+    if (dripIrrigationRequested) {
+      if (gDripRun.count > 0 && gDripRun.groupMs > 0) {
+        uint32_t groupElapsed = currentTime - lastTimeDripZoneSwitched;
+        if (groupElapsed >= gDripRun.groupMs) {
+          uint8_t nextIdx = gDripRun.activeIdx + 1;
+          if (nextIdx >= gDripRun.count) {
+            stopDripIrrigation();
+            Serial.println("Drip irrigation completed (all groups done)");
+          } else {
+            switchDripGroup(nextIdx);
+            Serial.println("Drip → group " + String(nextIdx));
+          }
+        }
+      } else {
+        uint32_t elapsed = currentTime - lastTimeDripIrrigationRequested;
+        if (elapsed >= dripMaxMs) {
+          stopDripIrrigation();
+          Serial.println("Drip irrigation completed (legacy)");
         }
       }
     }
@@ -446,12 +645,6 @@ void loop() {
     if (fillingRequested && ((currentTime - lastTimeFillingRequested) >= fillingMaxMs)) {
       fillingRequested = false;
       Serial.println("Filling completed in " + String(fillingMaxMs / 60000UL) + " minutes");
-    }
-
-    if ((dripIrrigationRequested && ((currentTime - lastTimeDripIrrigationRequested) >= dripMaxMs))) {
-      dripIrrigationRequested = false;
-      closeDripValves();
-      Serial.println("Drip irrigation completed in " + String(dripMaxMs / 60000UL) + " minutes");
     }
     #ifdef LEVEL_SIMULATOR
       levelCounter = (++levelCounter % 5);
@@ -469,6 +662,7 @@ void loop() {
   }
   // Pressure sensor
   currentTime = millis();
+#ifdef PRESSURE_SENSOR
   if ((currentTime - lastTimeShowLevel) >= PRESSURE_SCAN_PERIOD_MS) {
     pressureRaw = pressureSensor.read(true);
     //showPressure(6, 1);
@@ -488,10 +682,10 @@ void loop() {
     }
     lastTimeShowLevel = currentTime;
   }
-
   // if ((long)pressureRaw > HIGH_LEVEL_PRESSURE) {
   //   fillingEnabled = false;
   // }
+#endif
   currentTime = millis();
   if ((currentTime - lastTimeShowInputs) >= STATUS_SHOW_PERIOD_MS) {
     showStates();
@@ -504,21 +698,29 @@ void loop() {
 }
 
 void controlOutputs() {
-  // Control the outputs based on the current state
   if (!pcf_init_code) {
     setPumpWell(fillingRequested && fillingEnabled);
   }
+
   bool grassIrrigationState = grassIrrigationRequested && !drainingDisabled;
   if (grassIrrigationState != prevGrassIrrigationState) {
-    if (grassIrrigationState) {
-      grassPumpStartTime = millis();
-    }
+    if (grassIrrigationState) grassPumpStartTime = millis();
     prevGrassIrrigationState = grassIrrigationState;
   }
-  bool delayTimePassed = (millis() - grassPumpStartTime > GRASS_PUMP_START_DELAY_SECONDS * 1000UL);
+  bool grassDelayPassed = (millis() - grassPumpStartTime > GRASS_PUMP_START_DELAY_SECONDS * 1000UL);
   if (!pcf_init_code) {
-    setPumpGrass(grassIrrigationState && delayTimePassed);
     setGrassMainValve(grassIrrigationState);
+    setPumpGrass(grassIrrigationState && grassDelayPassed);
+  }
+
+  bool dripIrrigationState = dripIrrigationRequested && !drainingDisabled;
+  if (dripIrrigationState != prevDripIrrigationState) {
+    if (dripIrrigationState) dripPumpStartTime = millis();
+    prevDripIrrigationState = dripIrrigationState;
+  }
+  if (!pcf_init_code) {
+    setDripMainValve(dripIrrigationState);
+    setPumpDrip(dripIrrigationState);
   }
 }
 
@@ -561,10 +763,10 @@ void setup_NTP() {
   ntp.begin();
 }
 
-void adjustRtc(NTP *ntp) {
+void adjustRtc(NTP *ntp_v) {
     if (rtcReady) {
       Serial.print("Adjusting RTC ... ");
-      rtc.adjust(DateTime(ntp->year(), ntp->month(), ntp->day(), ntp->hours(), ntp->minutes(), ntp->seconds()));
+      rtc.adjust(DateTime(ntp_v->year(), ntp_v->month(), ntp_v->day(), ntp_v->hours(), ntp_v->minutes(), ntp_v->seconds()));
       Serial.println("done.");
     } else {
       Serial.println("RTC not ready to be adjusted.");
@@ -609,27 +811,27 @@ void showDiagInfo() {
 void checkForDefects() {
   if (level_2 && !level_1) {
     drainingDisabled = true;
-    grassIrrigationRequested = false;
-    dripIrrigationRequested = false;
+    stopGrassIrrigation();
+    stopDripIrrigation();
     diag |= L1_DEFECT;
   } else if (level_3 && (!level_2 || !level_1)) {
     drainingDisabled = true;
-    grassIrrigationRequested = false;
-    dripIrrigationRequested = false;
+    stopGrassIrrigation();
+    stopDripIrrigation();
     diag |= L12_DEFECT;
   } else if (level_4 && (!level_3 || !level_2 || !level_1)) {
-    fillingRequested = false;
+    stopFilling();
     diag |= L123_DEFECT;
   }
 
   if (getFilteredInput(TANK_UPPER_LIMIT1_SWITCH) && !getFilteredInput(TANK_UPPER_LIMIT2_SWITCH)) {
-    fillingRequested = false;
+    stopFilling();
     diag |= TANK_UPPER_LIMIT_DEFECT;
   }
   if (fillingEnabled && (fillingEnabled != prevFillingEnabled)) {
     leakageDetectorCounter++;
     if (leakageDetectorCounter > LEAKAGE_DETECTOR_THRESHOLD) {
-      fillingRequested = false;
+      stopFilling();
       diag |= LEAK_DEFECT;
     }
   }
@@ -638,7 +840,6 @@ void checkForDefects() {
 
 void ScanPCFInputs()
 {
-  char line[24];
   if (!pcf_init_code) {
     iState = pcf8574_I1.digitalReadAll() | (pcf8574_I2.digitalReadAll() << 8);
   } 
@@ -667,7 +868,7 @@ void handleLevelSwitches() {
 }
 
 void handleButtons() {  
-  uint16_t butState = (iFiltered ^ 0xFFFF) & BUTTON_MASK;
+  uint16_t butState = (iFiltered ^ 0xFFFF) & BUTTONS_MASK;
   if (lastButState != butState) {
     Serial.print("Button change: 0x");Serial.println(butState, HEX);
     switch (butState) {
@@ -676,11 +877,12 @@ void handleButtons() {
           lastTimeFillingRequested = millis();
           fillingMaxMs = controllerConfig.fillingMaxMinutes / (level_2 ? 2 : level_3 ? 3 : 1) * 60 * 1000UL;
           fillingRequested = true;
+          startFilling();
           websocketNotifyHardwareCommand("start", "Filling");
         } else if (millis() - lastTimeFillingRequested < 3000UL) {
           fillingMaxMs *= 2;
         } else {
-          fillingRequested = false;
+          stopFilling();
           websocketNotifyHardwareCommand("stop", "Filling");
         }
         if (!level_4) fillingEnabled = true;
@@ -688,27 +890,21 @@ void handleButtons() {
         leakageDetectorCounter = 0;
         break;
       case BUTTON_GRASS_MASK:    // Grass button
-        grassIrrigationRequested = !grassIrrigationRequested;
         if (grassIrrigationRequested) {
-          if (level_1) drainingDisabled = false;
-          lastTimeGrassIrrigationRequested = millis();
-          lastTimeGrassZoneSwitched = millis();
-          websocketNotifyHardwareCommand("start", "Grass");
-        } else {
-          closeGrassValves();
+          stopGrassIrrigation();
           websocketNotifyHardwareCommand("stop", "Grass");
+        } else {
+          startGrassIrrigation();
+          websocketNotifyHardwareCommand("start", "Grass");
         }
         break;
       case BUTTON_DRIP_MASK:    // Drip button
-        dripIrrigationRequested = !dripIrrigationRequested;
         if (dripIrrigationRequested) {
-          if (level_1) drainingDisabled = false;
-          lastTimeDripIrrigationRequested = millis();
-          leakageDetectorCounter = 0;
-          websocketNotifyHardwareCommand("start", "Drip");
-        } else {
-          closeDripValves();
+          stopDripIrrigation();
           websocketNotifyHardwareCommand("stop", "Drip");
+        } else {
+          startDripIrrigation();
+          websocketNotifyHardwareCommand("start", "Drip");
         }
         break;
       case BUTTON_ZONE_SWITCH_MASK:    // Zone Switch button
@@ -717,10 +913,10 @@ void handleButtons() {
           websocketNotifyHardwareCommand("zone_next", "Grass", grass_zone_index);
         }
         break;
-      case BUTTON_FILLING_MASK | BUTTON_GRASS_MASK:    // Filling and Grass buttons together
+      case BUTTONS_FILL_GRASS_MASK:    // Filling and Grass buttons together
         /* code */
         break;
-      case BUTTON_GRASS_MASK | BUTTON_DRIP_MASK:    // Grass and Drip buttons together
+      case BUTTONS_GRASS_DRIP_MASK:    // Grass and Drip buttons together
         /* code */
         break;
       

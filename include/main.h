@@ -1,4 +1,5 @@
-#include <Arduino.h>
+#pragma once
+
 #include <ArduinoJson.h>
 #include <NTP.h>
 #include "hw_config.h"
@@ -13,8 +14,10 @@
 #define BUTTON_FILTERING_MS              50   // button debounce 50ms
 #define GRASS_PUMP_START_DELAY_SECONDS    7   // Open the Main Valve, then 7 seconds later start the pump
 
-#define MAX_NUMBER_OF_GRASS_ZONES         5   // Number of grass irrigation zones
+#define MAX_NUMBER_OF_GRASS_ZONES         6   // Number of grass irrigation zones
 #define MAX_NUMBER_OF_DRIP_ZONES         16   // Number of drip irrigation zones
+#define MAX_ZONE_GROUPS                  16   // Max zone groups per area per run
+#define MAX_ZONES_PER_GROUP               8   // Max zones within one group
 
 // Internal logic timings
 #define TIME_UPDATE_PERIOD_MS    (1000UL)
@@ -36,6 +39,17 @@ typedef struct ControllerConfig {
     uint8_t numberOfDripZones    = MAX_NUMBER_OF_DRIP_ZONES;                // Max. number of drip irrigation zones
 } ControllerConfig;
 
+// Per-run zone-group configuration. Populated by WS start command or schedule
+// engine. count==0 means legacy flat cycling (hardware-button fallback).
+struct ZoneRunConfig {
+    uint8_t  count;                                    // number of groups
+    uint8_t  activeIdx;                                // currently-running group (0-based)
+    uint32_t groupMs;                                  // ms allotted per group
+    uint8_t  sizes[MAX_ZONE_GROUPS];                   // zones in each group
+    uint8_t  zoneIds[MAX_ZONE_GROUPS][MAX_ZONES_PER_GROUP]; // 1-based zone IDs
+    uint32_t groupElapsedMs[MAX_ZONE_GROUPS];          // accumulated ms per group (manual switches)
+};
+
 // ____________________________________________________________________________________________
 
 extern ControllerConfig controllerConfig;
@@ -43,16 +57,32 @@ extern JsonDocument scheduleJson;
 extern uint32_t fillingMaxMs;
 extern uint32_t grassMaxMs;
 extern uint32_t dripMaxMs;
-extern uint32_t grassGroupSwitchMs;
 
+#ifdef DEV_BOARD_OLED
+#define setGrassMainValve(value)
+#define setDripMainValve(value)
+#define setPumpWell(value)
+#define setPumpGrass(value)
+#define setPumpDrip(value)
+
+#define getGrassMainValve()         true
+#define getDripMainValve()          true
+#define getPumpWell()               true
+#define getPumpGrass()              false
+#define getPumpDrip()               false
+#else
 #define setGrassMainValve(value)    setOutput(MAIN_VALVE_GRASS, !(value))
 #define setDripMainValve(value)     setOutput(MAIN_VALVE_DRIP, !(value))
 #define setPumpWell(value)          setOutput(PUMP_WELL, !(value))
 #define setPumpGrass(value)         setOutput(PUMP_GRASS, !(value))
 #define setPumpDrip(value)          setOutput(PUMP_DRIP, !(value))
+
+#define getGrassMainValve()         !getOutput(MAIN_VALVE_GRASS)
+#define getDripMainValve()          !getOutput(MAIN_VALVE_DRIP)
 #define getPumpWell()               !getOutput(PUMP_WELL)
 #define getPumpGrass()              !getOutput(PUMP_GRASS)
 #define getPumpDrip()               !getOutput(PUMP_DRIP)
+#endif
 
 void ScanPCFInputs();
 void setOutput(uint8_t output_number, bool value);
@@ -61,7 +91,7 @@ bool getInput(uint8_t input_number);
 void handleButtons();
 void handleLevelSwitches();
 void setup_NTP();
-void adjustRtc(NTP *ntp);
+void adjustRtc(NTP *ntp_v);
 void applyConfig();
 void checkForDefects();
 void showDiagInfo();
@@ -89,4 +119,15 @@ bool getDripMainValveActive();
 uint32_t getGrassRemainingMs();
 uint32_t getGrassGroupRemainingMs();
 uint32_t getDripRemainingMs();
+uint32_t getDripGroupRemainingMs();
 uint32_t getFillingRemainingMs();
+// Zone group management — called by WS protocol and schedule engine.
+void setGrassZoneGroups(const ZoneRunConfig& cfg);
+void setDripZoneGroups(const ZoneRunConfig& cfg);
+const ZoneRunConfig& getGrassRunConfig();
+const ZoneRunConfig& getDripRunConfig();
+void switchGrassGroup(uint8_t newIdx);
+void switchDripGroup(uint8_t newIdx);
+// Wall-clock time from RTC (or NTP if no RTC). Returns false if time unknown.
+// dow: 0=Sunday, 1=Monday … 6=Saturday (same as RTClib).
+bool getRtcTime(uint8_t& hour, uint8_t& minute, uint8_t& dow);

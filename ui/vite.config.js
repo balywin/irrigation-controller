@@ -1,20 +1,11 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { rmSync } from 'fs';
 
 export default defineConfig({
-  plugins: [
-    svelte(),
-    {
-      name: 'clean-assets',
-      buildStart() {
-        rmSync('../data/assets', { recursive: true, force: true });
-      },
-    },
-  ],
+  plugins: [svelte()],
   build: {
-    outDir: '../data',
-    emptyOutDir: false,
+    outDir: 'dist',
+    emptyOutDir: true,
   },
   test: {
     environment: 'node',

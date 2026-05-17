@@ -34,7 +34,7 @@ body {
   letter-spacing: 0.04em;
   text-align: center;
   background: #e5e7eb;
-  color: #9ca3af;
+  color: #4b5563;
 }
 
 .emergency-btn {
@@ -149,9 +149,10 @@ body {
 
 .emergency-btn.e-active { color: #fff; cursor: pointer; }
 .emergency-btn.e-paused { color: #fff; cursor: pointer; filter: brightness(0.7); }
-.emergency-btn.e-inactive { background: #e5e7eb; color: #9ca3af; cursor: default; }
+.emergency-btn.e-inactive { background: #e5e7eb; color: #4b5563; cursor: default; }
 .emergency-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.6); }
 .emergency-btn.e-inactive .e-water-level { color: inherit; }
+.emergency-btn.e-inactive .battery-pct { color: #4b5563; text-shadow: none; }
 
 /* ── WS indicator ──────────────────────────────────────── */
 
@@ -177,9 +178,9 @@ body {
   object-fit: contain;
   transition: filter 0.3s ease, opacity 0.3s ease;
 }
-.ws-icon.ws-connected   { filter: none;                   opacity: 1; }
-.ws-icon.ws-reconnecting{ filter: hue-rotate(60deg);      opacity: 1;   animation: ws-pulse 1s infinite; }
-.ws-icon.ws-disconnected{ filter: grayscale(1) brightness(0.85); opacity: 0.55; }
+.ws-icon.ws-connected   { filter: saturate(0.85) brightness(1.35); opacity: 1; }
+.ws-icon.ws-reconnecting{ filter: hue-rotate(270deg) saturate(1.4) brightness(1.1); opacity: 1; animation: ws-pulse 1s infinite; }
+.ws-icon.ws-disconnected{ filter: hue-rotate(240deg) saturate(1.3) brightness(1.05); opacity: 1; }
 
 .ws-connected { background: #16a34a; }
 .ws-reconnecting { background: #f59e0b; animation: ws-pulse 1s infinite; }
@@ -439,4 +440,15 @@ nav button.tab-disabled { color: #bbb; }
   .status-grid { grid-template-columns: repeat(2, 1fr); }
 
   .save-bar { flex-wrap: wrap; }
+}
+
+/* Sequence chip — matches firmware active group while irrigation running */
+.btn.active-group {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  animation: active-group-pulse 1.4s ease-in-out infinite;
+}
+@keyframes active-group-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 40%, transparent); }
+  50%       { box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 55%, transparent); }
 }

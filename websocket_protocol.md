@@ -12,21 +12,23 @@ Implemented real-time JSON protocol between firmware and web UI.
 ### `command`
 
 ```json
-{ "type": "command", "action": "start", "target": "Grass", "durationMinutes": 2, "zoneGroupCount": 4, "reqId": "c1" }
+{ "type": "command", "action": "start", "target": "Grass", "durationMinutes": 2, "groupCount": 4, "reqId": "c1" }
 ```
 
-- `action`: `start` | `stop` | `pause_1h`
+- `action`: `start` | `stop` | `pause_1h` | `run_schedule`
 - `target`: `Grass` | `Drip` | `Filling` (case-insensitive)
-- `durationMinutes` (optional, `start` only): per-zone-group duration. For Grass/Drip the firmware computes the total run length as `durationMinutes * zoneGroupCount`; for Filling it is the total filling cap. Omit (or 0) to use the configured default from `app_config.json`.
-- `zoneGroupCount` (optional, `start` only, areas only): number of zone groups defined for the manual run. Combined with `durationMinutes` this drives the per-group switch interval and the total run length.
+- `durationMinutes` (optional, `start` only): per-zone-group duration. For Grass/Drip the firmware computes the total run length as `durationMinutes * groupCount`; for Filling it is the total filling cap. Omit (or 0) to use the configured default from `app_config.json`.
+- `groupCount` (optional, `start` only, areas only): number of zone groups defined for the manual or schedule run. Combined with `durationMinutes` this drives the per-group switch interval and the total run length.
+- `scheduleIndex` (required for `run_schedule`): 0-based index of the schedule card to fire. Must be in `[0, 7]`.
 - `reqId` (optional): echoed in `error` responses
 
 Behavior:
-- `start`: starts requested subsystem (blocked while paused by `pause_1h`)
+- `start`: starts requested subsystem if stopped, resumes it if paused by `pause_1h` (or hardware button), or restarts it if already running, which restores the saved timer and group state but applies the new duration override if provided. For areas (`Grass`/`Drip`).
   - **Schedule auto-disarm**: for areas (`Grass`/`Drip`), firmware reads `schedule.json[<area>].enabled`, stashes it in `/config/disarm.json`, then writes only `schedule.json[<area>].enabled = false`. Per-card schedule data is never touched. On stop/natural-end, the original value is restored and the stash entry removed. On next boot, any remaining stash entries are recovered and restored.
-  - **Per-run duration override**: when the command carries `durationMinutes` (and for Grass/Drip also `zoneGroupCount`), the firmware overrides the in-memory `<area>MaxMs` (and for Grass `grassGroupSwitchMs`) for this run. The override is RAM-only and is reset to the `app_config.json` defaults the next time `applyConfig()` runs. Without these fields, the configured defaults apply.
+  - **Per-run duration override**: when the command carries `durationMinutes` (and for Grass/Drip also `groupCount`), the firmware overrides the in-memory `<area>MaxMs` (and for Grass `grassGroupSwitchMs`) for this run. The override is RAM-only and is reset to the `app_config.json` defaults the next time `applyConfig()` runs. Without these fields, the configured defaults apply.
 - `stop`: stops requested subsystem, clears an active pause, clears the RAM `armed` flag for the area
-- `pause_1h`: stops subsystem and blocks `start` for one hour; clears the RAM `armed` flag for the area
+- `pause_1h`: stops subsystem for one hour, but keeps the duration timer and currently active group; clears the RAM `armed` flag for the area
+- `run_schedule` (areas only): immediately fires the schedule card at `scheduleIndex`, exactly as the time-triggered engine would — reads zones and duration from `scheduleJson` in RAM, sets `scheduleActive` to the fired index. Rejected if the area is already running or paused. Does **not** update the dedup timestamp, so the same card still fires at its configured wall-clock time.
 
 ### `ping`
 
@@ -79,8 +81,8 @@ Sent:
     "device": { "uptime": 1234, "firmware": "0.1.0", "heap": 214512 },
     "sensors": { "waterLevel": 75, "tankPressure": 100200 },
     "areas": {
-      "Grass": { "running": true, "manuallyStarted": true, "scheduleActive": false, "pausedUntil": null, "zone": 2, "activeGroupIndex": 2, "remainingSeconds": 935, "groupRemainingSeconds": 47 },
-      "Drip": { "running": false, "manuallyStarted": false, "scheduleActive": false, "pausedUntil": null, "zone": null, "activeGroupIndex": -1, "remainingSeconds": 0, "groupRemainingSeconds": 0 }
+      "Grass": { "running": true, "manuallyStarted": true, "scheduleActive": 1, "pausedUntil": null, "activeGroupIndex": 2, "remainingSeconds": 935, "groupRemainingSeconds": 47 },
+      "Drip": { "running": false, "manuallyStarted": false, "scheduleActive": -1, "pausedUntil": null, "activeGroupIndex": -1, "remainingSeconds": 0, "groupRemainingSeconds": 0 }
     },
     "filling": { "running": false, "manuallyStarted": false, "scheduleActive": false, "enabled": true, "pausedUntil": null, "remainingSeconds": 0 },
     "pumps": { "1": true, "2": false, "3": false },
@@ -91,7 +93,7 @@ Sent:
 
 Notes:
 - `pausedUntil` is currently an ISO-8601 duration-like string (`PT<n>S`) or `null`.
-- `scheduleActive` is currently always `false` (schedule WS integration pending).
+- `scheduleActive` (per area): 0-based index of the schedule card that fired the current run, or `-1` when the area is not running by schedule (idle or manually started). Used by the UI to identify which schedule card is active.
 - `activeZones` is the array of zone IDs currently energized for the area's running group. While idle the array is empty. Multi-zone groups (e.g. `[1, 3]`) report all members simultaneously. Used by the UI to:
   1. show energized zone numbers inside the area's emergency-stop button,
   2. identify the active group for `Shuffle now` to reposition it without disturbing the running cycle (matches against `manual_control.json` `zones` group entries by sorted zone IDs).

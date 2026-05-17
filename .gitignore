@@ -50,4 +50,4 @@
 include/.DS_Store
 src/.DS_Store
 node_modules/
-data/assets/
+ui/dist/

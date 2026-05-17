@@ -1,0 +1,6 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Build &amp; Flash" type="ARDUINO_RUN" factoryName="ARDUINO_RUN_FACTORY">
+    <options mode="BUILD_AND_FLASH" buildTarget="" additionalArgs="" cleanFirst="false" port="" baudRate="921600" subprojectPath="" sketchFolder="" />
+    <method v="2" />
+  </configuration>
+</component>

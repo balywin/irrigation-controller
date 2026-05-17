@@ -1,0 +1,163 @@
+<style>
+  /* Mirror actual app styles */
+  .emergency-btn {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    width: 100%;
+    box-sizing: border-box;
+    color: #fff;
+    background: #2563eb;
+    cursor: pointer;
+  }
+  .e-title { text-align: left; display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+  .e-state { text-align: center; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; flex-direction: column; }
+  .e-action { text-align: right; }
+  .e-remaining { font-size: 0.7rem; font-weight: 700; opacity: 0.85; }
+  .e-remaining-left { margin-right: 0.3rem; padding: 1px 4px; border-radius: 4px; background: rgba(255,255,255,0.18); }
+  .e-zones { font-size: 0.7rem; font-weight: 600; opacity: 0.9; white-space: nowrap; }
+  .e-zone-chip {
+    font-size: 0.7rem; font-weight: 800;
+    border-radius: 3px; padding: 1px 4px;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+  }
+  .e-zone-chip.active {
+    background: rgba(255,255,255,0.22);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .e-zone-chip.clickable {
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .e-zone-chip.clickable:hover { background: rgba(255,255,255,0.4); }
+  .e-zone-chip.clickable.active { outline: 2px solid rgba(255,255,255,0.9); }
+  @keyframes pulse {
+    0%, 100% { background: rgba(255,255,255,0.22); }
+    50% { background: rgba(255,255,255,0.45); }
+  }
+  .stop-btn {
+    background: rgba(255,255,255,0.2); border: none; border-radius: 4px;
+    color: #fff; font-weight: 700; font-size: 0.75rem; padding: 2px 8px; cursor: pointer;
+  }
+  .demo-area { max-width: 520px; margin: 0 auto 2rem; }
+  .demo-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.5; margin-bottom: 0.5rem; }
+  .note { font-size: 0.8rem; opacity: 0.6; margin-top: 0.5rem; padding-left: 0.5rem; }
+  .divider { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2rem 0; }
+  .badge { display: inline-block; background: #2563eb; color: #fff; border-radius: 99px; font-size: 0.65rem; padding: 2px 8px; margin-left: 0.5rem; vertical-align: middle; }
+</style>
+
+<h2>Zone Group Selection — Interaction Design</h2>
+<p class="subtitle">How should switching zone groups look during active irrigation?</p>
+
+<hr class="divider">
+
+<!-- OPTION A -->
+<div class="demo-area">
+  <p class="demo-label">Option A — Clickable chips (switch only)</p>
+  <div class="emergency-btn">
+    <span class="e-title">
+      G&nbsp;
+      <span class="e-zones">
+        <span class="e-zone-chip clickable active" title="Click to activate">12</span>
+        &nbsp;<span class="e-zone-chip clickable" title="Click to activate">3</span>
+        &nbsp;<span class="e-zone-chip clickable" title="Click to activate">45</span>
+      </span>
+    </span>
+    <span class="e-state">
+      <span class="e-remaining e-remaining-left">14:22</span>
+      <span>Active</span>
+      <span class="e-remaining">38:00</span>
+    </span>
+    <span class="e-action"><button class="stop-btn">Stop</button></span>
+  </div>
+  <p class="note">Each group chip is clickable. Clicking "3" immediately switches to zones 3. Active chip pulses + has white outline.</p>
+</div>
+
+<hr class="divider">
+
+<!-- OPTION B -->
+<div class="demo-area">
+  <p class="demo-label">Option B — Chips with zone editing <span class="badge">+ per-group edit</span></p>
+  <div class="emergency-btn">
+    <span class="e-title">
+      G&nbsp;
+      <span class="e-zones" style="display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap;">
+        <!-- active group chip + inline zone edit -->
+        <span style="display:inline-flex;align-items:center;gap:2px;">
+          <span class="e-zone-chip clickable active">1</span>
+          <span class="e-zone-chip clickable active" style="outline:2px solid rgba(255,255,255,0.9)">2</span>
+          <span style="font-size:0.6rem;opacity:0.7;cursor:pointer;padding:0 2px;" title="add zone to active group">＋</span>
+          <span style="font-size:0.6rem;opacity:0.7;cursor:pointer;padding:0 2px;" title="remove last zone">✕</span>
+        </span>
+        &nbsp;
+        <span class="e-zone-chip clickable">3</span>
+        &nbsp;
+        <span class="e-zone-chip clickable">45</span>
+      </span>
+    </span>
+    <span class="e-state">
+      <span class="e-remaining e-remaining-left">14:22</span>
+      <span>Active</span>
+      <span class="e-remaining">38:00</span>
+    </span>
+    <span class="e-action"><button class="stop-btn">Stop</button></span>
+  </div>
+  <p class="note">Active group shows individual zones as separate chips. + / ✕ buttons add or remove a zone from that group and instantly sync to backend.</p>
+</div>
+
+<hr class="divider">
+
+<!-- OPTION C -->
+<div class="demo-area">
+  <p class="demo-label">Option C — Chips in popover (avoids cramped layout)</p>
+  <div class="emergency-btn">
+    <span class="e-title">
+      G&nbsp;
+      <span class="e-zones" style="cursor:pointer;">
+        <span class="e-zone-chip active">12</span>
+        &nbsp;<span style="font-size:0.7rem;opacity:0.7;">▾</span>
+      </span>
+    </span>
+    <span class="e-state">
+      <span class="e-remaining e-remaining-left">14:22</span>
+      <span>Active</span>
+      <span class="e-remaining">38:00</span>
+    </span>
+    <span class="e-action"><button class="stop-btn">Stop</button></span>
+  </div>
+  <p class="note">Clicking zones area opens a small popover listing all groups. User picks one to switch. Editing zones happens in the popover too. Cleaner button but extra click.</p>
+</div>
+
+<hr class="divider">
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Clickable chips — switch only</h3>
+      <p>Simple. Click a group chip to switch. No inline zone editing. Groups are edited in config.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Chips + inline zone editing</h3>
+      <p>Click group to switch. Active group shows per-zone chips with +/✕ to add/remove zones live.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Popover for switching + editing</h3>
+      <p>Clicking zone indicator opens a small popover. All interactions happen there. Button stays clean.</p>
+    </div>
+  </div>
+</div>
