@@ -369,7 +369,7 @@ void sendConfigSaved(AsyncWebSocketClient* client, const String& fileName, bool 
 
 // Fire a specific schedule entry immediately, bypassing time/day checks.
 // Does not update gLastFiredMin so the time-triggered run still fires at the configured time.
-bool fireSchedule(int areaIdx, int schedIdx, String& outCode, String& outMsg) {
+bool fireSchedule(int8_t areaIdx, int8_t schedIdx, String& outCode, String& outMsg) {
   const char* areaId = (areaIdx == 0) ? "Grass" : "Drip";
   String key = resolveSchedKey(areaId);
   JsonVariantConst areaNode = scheduleJson[key.c_str()];
@@ -377,7 +377,7 @@ bool fireSchedule(int areaIdx, int schedIdx, String& outCode, String& outMsg) {
     outCode = "bad_request"; outMsg = "area not in schedule.json"; return false;
   }
   JsonArrayConst schedules = areaNode["schedules"].as<JsonArrayConst>();
-  if (schedules.isNull() || schedIdx >= (int)schedules.size()) {
+  if (schedules.isNull() || schedIdx >= schedules.size()) {
     outCode = "bad_request"; outMsg = "schedule index out of range"; return false;
   }
   JsonVariantConst sched = schedules[schedIdx];
@@ -538,7 +538,7 @@ void checkSchedules() {
   const char* areaIds[]    = {"Grass", "Drip"};
   unsigned long* pauseRefs[] = {&gPauseUntilGrassMs, &gPauseUntilDripMs};
 
-  for (int ai = 0; ai < 2; ai++) {
+  for (int8_t ai = 0; ai < 2; ai++) {
     const char* areaId = areaIds[ai];
     if (isPaused(*pauseRefs[ai])) continue;
 

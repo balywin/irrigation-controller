@@ -744,7 +744,6 @@ function buildManualTab() {
   // Filling card
   const f = APP_CONFIG.filling;
   const MOCK_WATER_LEVEL = 72; // mock sensor value
-  const tankFull = MOCK_WATER_LEVEL >= 100;
   const fBtn = h('button', { class: 'btn', style: 'color:#fff;min-width:6rem;' }, 'Start');
   const fReason = h('span', { style: 'font-size:0.75rem;color:#9ca3af;' }, '');
   let fillingPending = null;
@@ -754,14 +753,13 @@ function buildManualTab() {
     if (fillingPending === 'start') { fBtn.textContent = 'Starting…'; fBtn.style.background = '#fb923c'; fBtn.disabled = true; }
     else if (fillingPending === 'stop') { fBtn.textContent = 'Stopping…'; fBtn.style.background = '#ef4444'; fBtn.disabled = true; }
     else if (manualActive) { fBtn.textContent = 'Stop'; fBtn.style.background = '#ef4444'; fBtn.disabled = false; }
-    else if (tankFull) { fBtn.textContent = 'Start'; fBtn.style.background = '#fb923c'; fBtn.disabled = true; }
     else { fBtn.textContent = 'Start'; fBtn.style.background = '#fb923c'; fBtn.disabled = false; }
-    fReason.textContent = (!manualActive && !fillingPending && tankFull) ? `Tank full (${MOCK_WATER_LEVEL}%)` : '';
+    fReason.textContent = '';
   }
   updaters['filling'] = updateFBtn;
   updateFBtn();
   fBtn.addEventListener('click', () => {
-    if (fillingPending || tankFull) return;
+    if (fillingPending) return;
     const st = state.eState['filling'] ?? 'inactive';
     const manualActive = st === 'active' && state.eSource['filling'] === 'manual';
     fillingPending = manualActive ? 'stop' : 'start';

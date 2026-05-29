@@ -182,13 +182,12 @@ void showTime() {
   char pcf_status = pcf_init_code && timeBlink ? 'E' : ' ';
   if (rtcReady) {
     sprintf(tm, "%02u:%02u:%02u %c", rtc.now().hour(), rtc.now().minute(), rtc.now().second(), pcf_status);
-    sprintf(temp, "%.1f%cC     ", rtc.getTemperature(), static_cast<char>(0xF7));
-    temp[11] = '\0';
+    sprintf(temp, "%.1f%cC     ", rtc.getTemperature(), 0xF7);
   } else {
     sprintf(tm, "%02u:%02u:%02u %c", ntp.hours(), ntp.minutes(), ntp.seconds(), pcf_status);
-    sprintf(temp, "--.-- %cC     ", static_cast<char>(0xF7));
-    temp[11] = '\0';
+    sprintf(temp, "--.-- %cC      ", 0xF7);
   }
+  temp[10] = 0;
   oled_show_at(0, 0, temp);
   oled_show_at(11, 0, timeSet || timeBlink ? tm : "           ");
 
@@ -201,15 +200,15 @@ void showTime() {
     if (fillingRequested) {
       sprintf(temp, "%02lu:%02lu", getFillingRemainingMs() / 60000UL, (getFillingRemainingMs() / 1000UL) % 60);
       oled_show_at(0, 2, temp);
-    }
+    } else oled_clear_from(2, 1, 0, 6);
     if (isGrassIrrigating()) {
       sprintf(temp, "%02lu:%02lu", getGrassRemainingMs()   / 60000UL, (getGrassRemainingMs()   / 1000UL) % 60);
       oled_show_at(6, 2, temp);
-    }
+    } else oled_clear_from(2, 1, 6, 6);
     if (isDripIrrigating()) {
       sprintf(temp, "%02lu:%02lu", getDripRemainingMs()    / 60000UL, (getDripRemainingMs()    / 1000UL) % 60);
       oled_show_at(12, 2, temp);
-    }
+    } else oled_clear_from(2, 1, 12, 6);
   }
   timeBlink = !timeBlink;
 }
@@ -439,7 +438,6 @@ void startGrassIrrigation() {
 
 void stopGrassIrrigation() {
   grassIrrigationRequested = false;
-  oled_clear_line(2);
   closeGrassValves();
   gGrassRun = {};
 }
@@ -456,7 +454,6 @@ void startDripIrrigation() {
 
 void stopDripIrrigation() {
   dripIrrigationRequested = false;
-  oled_clear_line(2);
   closeDripValves();
   gDripRun = {};
 }
@@ -482,7 +479,6 @@ void startFilling() {
 
 void stopFilling() {
   fillingRequested = false;
-  oled_clear_line(2);
 }
 
 bool isFillingActive() { return fillingRequested; }
