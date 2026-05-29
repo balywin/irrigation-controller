@@ -1,7 +1,7 @@
 #include "ElefantOTA.h"
 #include "elefant_ota_html.h"
 
-ElegantOTAClass::ElegantOTAClass(){}
+ElegantOTAClass::ElegantOTAClass() = default;
 
 void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username, const char * password, const char * currentFWVersion){
   _server = server;
@@ -72,7 +72,7 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
       #endif
 
       // Pre-OTA update callback
-      if (preUpdateCallback != NULL) preUpdateCallback();
+      if (preUpdateCallback != nullptr) preUpdateCallback(mode);
 
       // Start update process
       #if defined(ESP8266)
@@ -162,7 +162,7 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
       #endif
 
       // Pre-OTA update callback
-      if (preUpdateCallback != NULL) preUpdateCallback();
+      if (preUpdateCallback != NULL) preUpdateCallback(mode);
 
       // Start update process
       #if defined(ESP8266)
@@ -224,7 +224,7 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
           return request->requestAuthentication();
         }
         // Post-OTA update callback
-        if (postUpdateCallback != NULL) postUpdateCallback(!Update.hasError());
+        if (postUpdateCallback != nullptr) postUpdateCallback(!Update.hasError());
         AsyncWebServerResponse *response = request->beginResponse((Update.hasError()) ? 400 : 200, "text/plain", (Update.hasError()) ? _update_error_str.c_str() : "OK");
         response->addHeader("Connection", "close");
         response->addHeader("Access-Control-Allow-Origin", "*");
@@ -256,7 +256,7 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
             }
             _current_progress_size += len;
             // Progress update callback
-            if (progressUpdateCallback != NULL) progressUpdateCallback(_current_progress_size, request->contentLength());
+            if (progressUpdateCallback != nullptr) progressUpdateCallback(_current_progress_size, request->contentLength());
         }
             
         if (final) { // if the final flag is set then this is the last frame of data
@@ -359,7 +359,7 @@ void ElegantOTAClass::loop() {
   }
 }
 
-void ElegantOTAClass::onStart(std::function<void()> callable){
+void ElegantOTAClass::onStart(std::function<void(OTA_Mode)> callable){
     preUpdateCallback = callable;
 }
 
@@ -370,6 +370,5 @@ void ElegantOTAClass::onProgress(std::function<void(size_t current, size_t final
 void ElegantOTAClass::onEnd(std::function<void(bool success)> callable){
     postUpdateCallback = callable;
 }
-
 
 ElegantOTAClass ElegantOTA;

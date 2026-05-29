@@ -41,12 +41,12 @@ void oled_clear_from(uint8_t line, uint8_t size, uint8_t from, uint8_t len) {
   oled.fillRect(from_px, 8 * line, width, 8 * size, 0);
 }
 
-void oled_show(uint8_t line, String text, uint8_t size, bool clear) {
+void oled_show(uint8_t line, const String& text, uint8_t size, bool clear) {
   if (clear) oled_clear_line(line, size);
   oled_show_at(0, line, text, size, false);
 }
 
-void oled_show_at(uint8_t pos, uint8_t line, String text, uint8_t size, bool clear) {
+void oled_show_at(uint8_t pos, uint8_t line, const String& text, uint8_t size, bool clear) {
   oled.setTextSize(size);
   if (clear)
     oled_clear_from(line, size, pos, text.length());

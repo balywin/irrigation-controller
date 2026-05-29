@@ -433,7 +433,7 @@
   {@const fillingScheduleActive = (ws.status?.filling?.scheduleActive ?? -1) >= 0}
   {@const fillingPaused = ws.status?.filling?.pausedUntil != null}
   {@const canStartFilling = fillingEnabled && !fillingPaused}
-  {@const fillingDisabledReason = !fillingEnabled ? 'Filling disabled in settings' : fillingScheduleActive ? 'Running by schedule' : fillingPaused ? 'Paused by schedule' : ''}
+  {@const fillingDisabledReason = !fillingEnabled ? 'Filling disabled in settings' : fillingPaused ? 'Paused' : ''}
   {@const fillingPending = pendingAction['filling']}
   {@const fillingBtnLabel = fillingPending === 'start' ? 'Starting…' : fillingPending === 'stop' ? 'Stopping…' : (fillingManual ? 'Stop' : 'Start')}
   {@const fillingBtnBg = fillingManual ? '#ef4444' : '#fb923c'}

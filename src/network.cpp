@@ -203,9 +203,10 @@ bool checkConnection() {
     if (s != "") {
       if (s != "Disconnected") Serial.println(s);
       if (s == "Disconnected" || s == "Cable disconnected") {
-#ifdef WIFI_NO_ETHERNET
+#ifndef WIFI_NO_ETHERNET
         oled_show(1, s);
 #endif
+        oled_clear_from(1, 1, 19, 2);
         oled.drawBitmap(120, 8, disconIcon, 8, 8, OLED_WHITE);
         oled_clear_line(2);
       } else if (s == "WiFi Connected" || s == "Cable connected") {
@@ -214,6 +215,7 @@ bool checkConnection() {
           oled_show(1, String(wifiCredentials[ssid_index].ssid));
         }
 #endif
+        oled_clear_from(1, 1, 19, 2);
         oled.drawBitmap(120, 8, conIcon, 8, 8, OLED_WHITE);
       } else {
         oled_clear_keep_last(1, 1, 1);
@@ -252,16 +254,22 @@ bool checkConnection() {
   return false;
 }
 
-void onOTAStart() {
-  // Log when OTA has started
+void onOTAStart(OTA_Mode mode) {
   Serial.println("OTA update started!");
-  // <Add your own code here>
+  const char* otaType = (mode == OTA_MODE_FIRMWARE) ? "Firmware" : "LittleFS";
+  oled_show(2, otaType, 1);
+  oled_show(1, "SW Update", 1);
+  serverStartedEventTime = millis() + 15000UL;
 }
 
 void onOTAProgress(size_t current, size_t final) {
   // Log every 1 second
+  char percentStr[12];
   if (millis() - ota_progress_millis > 1000) {
     ota_progress_millis = millis();
+//    sprintf(percentStr, "%u%%", (current * 100) / final);
+//    oled_show_at((current * 10) / final + 11, 1, ".", 1);
+//    serverStartedEventTime = millis() + 15000UL;
     Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
   }
 }
@@ -269,8 +277,10 @@ void onOTAProgress(size_t current, size_t final) {
 void onOTAEnd(bool success) {
   // Log when OTA has finished
   if (success) {
+    oled_show(1, "OTA Success...", 1);
     Serial.println("OTA update finished successfully!");
   } else {
+    oled_show(1, "OTA Failed...", 1);
     Serial.println("There was an error during OTA update!");
   }
   // <Add your own code here>
