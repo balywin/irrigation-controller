@@ -23,6 +23,8 @@
 #include "network.h"
 #include "webserver_embedded.h"
 #include "websocket_protocol.h"
+#include "zones.h"
+#include "areas.h"
 
 RTC_DS3231 rtc;
 WiFiUDP ntpUDP;
@@ -38,11 +40,6 @@ uint32_t dripMaxMs;
 uint32_t levelFilteringMsThreshold;
 uint32_t macDisplayUntil = 0;
 
-// Per-run zone-group state.  Populated by setGrassZoneGroups / setDripZoneGroups
-// (called from WS start command or schedule engine) before starting irrigation.
-// count==0 → legacy flat single-zone cycling (hardware-button fallback).
-ZoneRunConfig gGrassRun = {};
-ZoneRunConfig gDripRun  = {};
 uint32_t buttonFilteringCounterThreshold;
 
 // ------------- Time --------------------------------
@@ -107,7 +104,9 @@ JsonDocument appConfigJson;
 JsonDocument scheduleJson;
 JsonDocument manualControlJson;
 
-int8_t grass_zone_index;
+AreaConfig areas[2];  // Grass and Drip
+uint8_t numAreas = 0;
+
 uint8_t grassZones[MAX_NUMBER_OF_GRASS_ZONES];
 uint8_t dripZones[MAX_NUMBER_OF_DRIP_ZONES];
 
@@ -187,7 +186,7 @@ void showTime() {
     sprintf(tm, "%02u:%02u:%02u %c", ntp.hours(), ntp.minutes(), ntp.seconds(), pcf_status);
     sprintf(temp, "--.-- %cC      ", 0xF7);
   }
-  temp[10] = 0;
+  temp[11] = 0;
   oled_show_at(0, 0, temp);
   oled_show_at(11, 0, timeSet || timeBlink ? tm : "           ");
 
@@ -236,13 +235,14 @@ void showStates() {
   String grassIndicator = "";
   if (grassIrrigationRequested) {
     grassIndicator = "G";
-    if (gGrassRun.count > 0) {
-      uint8_t sz = gGrassRun.sizes[gGrassRun.activeIdx];
+    const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
+    if (grassRun.count > 0) {
+      const uint8_t sz = grassRun.sizes[grassRun.activeIdx];
       for (uint8_t z = 0; z < sz && grassIndicator.length() < 4; z++) {
-        grassIndicator += String(gGrassRun.zoneIds[gGrassRun.activeIdx][z]);
+        grassIndicator += String(grassRun.zoneIds[grassRun.activeIdx][z]);
       }
     } else {
-      grassIndicator += String(grass_zone_index);
+      grassIndicator += String(Zones::getGrassZoneIndex());
     }
   }
   // Fixed format: F + 1sp + 4-char grass (padded) + 1sp — 'D' always at col 6
@@ -311,6 +311,15 @@ void setup() {
   printTestValues(appConfigJson);
   Serial.printf("  - Filling max minutes: %d\n", controllerConfig.fillingMaxMinutes);
 
+  // Load areas configuration
+  if (Areas::loadAreasConfig(appConfigJson, areas, 2, numAreas)) {
+    Serial.print("Loaded ");
+    Serial.print(numAreas);
+    Serial.println(" areas from app config");
+  } else {
+    Serial.println("Failed to load areas config");
+  }
+
   // Load manual control configuration
   loadJsonFile(manualControlJson, "/config/manual_control.json");
 
@@ -352,7 +361,7 @@ void setup() {
     macDisplayUntil = millis() + 8000UL;
   }
 
-  changeGrassZone(0);
+  Zones::init(controllerConfig.numberOfGrassZones, controllerConfig.numberOfDripZones);
 } 
 
 void closeGrassValves() {
@@ -367,63 +376,28 @@ void closeDripValves() {
   }
 }
 
-// Open all zones in a grass group; close all others.
-static void applyGrassGroup(uint8_t groupIdx) {
-  closeGrassValves();
-  if (groupIdx >= gGrassRun.count) return;
-  uint8_t sz = gGrassRun.sizes[groupIdx];
-  for (uint8_t z = 0; z < sz; z++) {
-    uint8_t id = gGrassRun.zoneIds[groupIdx][z];  // 1-based
-    if (id >= 1 && id <= MAX_NUMBER_OF_GRASS_ZONES)
-      setOutput(grassZones[id - 1], false);  // false = open (active-low relay)
-  }
-}
-
-// Open all zones in a drip group; close all others.
-static void applyDripGroup(uint8_t groupIdx) {
-  closeDripValves();
-  if (groupIdx >= gDripRun.count) return;
-  uint8_t sz = gDripRun.sizes[groupIdx];
-  for (uint8_t z = 0; z < sz; z++) {
-    uint8_t id = gDripRun.zoneIds[groupIdx][z];  // 1-based
-    if (id >= 1 && id <= MAX_NUMBER_OF_DRIP_ZONES && dripZones[id - 1] != 0)
-      setOutput(dripZones[id - 1], false);
-  }
-}
-
 void switchGrassGroup(uint8_t newIdx) {
-  if (newIdx >= gGrassRun.count) return;
+  ZoneRunConfig grassRun = Zones::getGrassRunConfig();
+  if (newIdx >= grassRun.count) return;
   uint32_t elapsed = millis() - lastTimeGrassZoneSwitched;
-  if (elapsed > gGrassRun.groupMs) elapsed = gGrassRun.groupMs;
-  gGrassRun.groupElapsedMs[gGrassRun.activeIdx] += elapsed;
-  gGrassRun.activeIdx = newIdx;
-  lastTimeGrassZoneSwitched = millis() - gGrassRun.groupElapsedMs[newIdx];
-  applyGrassGroup(newIdx);
+  if (elapsed > grassRun.groupMs) elapsed = grassRun.groupMs;
+  grassRun.groupElapsedMs[grassRun.activeIdx] += elapsed;
+  grassRun.activeIdx = newIdx;
+  lastTimeGrassZoneSwitched = millis() - grassRun.groupElapsedMs[newIdx];
+  Zones::setGrassZoneGroups(grassRun);
+  Zones::applyGrassGroup(newIdx);
 }
 
 void switchDripGroup(uint8_t newIdx) {
-  if (newIdx >= gDripRun.count) return;
+  ZoneRunConfig dripRun = Zones::getDripRunConfig();
+  if (newIdx >= dripRun.count) return;
   uint32_t elapsed = millis() - lastTimeDripZoneSwitched;
-  if (elapsed > gDripRun.groupMs) elapsed = gDripRun.groupMs;
-  gDripRun.groupElapsedMs[gDripRun.activeIdx] += elapsed;
-  gDripRun.activeIdx = newIdx;
-  lastTimeDripZoneSwitched = millis() - gDripRun.groupElapsedMs[newIdx];
-  applyDripGroup(newIdx);
-}
-
-void changeGrassZone(int8_t step) {
-  if (gGrassRun.count > 0) {
-    int ni = static_cast<int>(gGrassRun.activeIdx) + step;
-    if (ni < 0) ni = static_cast<int>(gGrassRun.count) - 1;
-    if (ni >= static_cast<int>(gGrassRun.count)) ni = 0;
-    gGrassRun.activeIdx = static_cast<uint8_t>(ni);
-    applyGrassGroup(gGrassRun.activeIdx);
-  } else {
-    grass_zone_index += step;
-    if (grass_zone_index >= controllerConfig.numberOfGrassZones) grass_zone_index = 1;
-    else if (grass_zone_index < 1) grass_zone_index = controllerConfig.numberOfGrassZones - 1;
-  }
-  lastTimeGrassZoneSwitched = millis();
+  if (elapsed > dripRun.groupMs) elapsed = dripRun.groupMs;
+  dripRun.groupElapsedMs[dripRun.activeIdx] += elapsed;
+  dripRun.activeIdx = newIdx;
+  lastTimeDripZoneSwitched = millis() - dripRun.groupElapsedMs[newIdx];
+  Zones::setDripZoneGroups(dripRun);
+  Zones::applyDripGroup(newIdx);
 }
 
 void startGrassIrrigation() {
@@ -431,15 +405,15 @@ void startGrassIrrigation() {
   if (level_1) drainingDisabled = false;
   lastTimeGrassIrrigationRequested = millis();
   lastTimeGrassZoneSwitched = millis();
-  grass_zone_index = 0;
-  gGrassRun.activeIdx = 0;
-  if (gGrassRun.count > 0) applyGrassGroup(0);
+  Zones::setGrassZoneIndex(0);
+  const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
+  if (grassRun.count > 0) Zones::applyGrassGroup(0);
 }
 
 void stopGrassIrrigation() {
   grassIrrigationRequested = false;
   closeGrassValves();
-  gGrassRun = {};
+  Zones::setGrassZoneGroups({});
 }
 
 void startDripIrrigation() {
@@ -447,21 +421,17 @@ void startDripIrrigation() {
   if (level_1) drainingDisabled = false;
   lastTimeDripIrrigationRequested = millis();
   lastTimeDripZoneSwitched = millis();
-  gDripRun.activeIdx = 0;
   leakageDetectorCounter = 0;
-  if (gDripRun.count > 0) applyDripGroup(0);
+  const ZoneRunConfig& dripRun = Zones::getDripRunConfig();
+  if (dripRun.count > 0) Zones::applyDripGroup(0);
 }
 
 void stopDripIrrigation() {
   dripIrrigationRequested = false;
   closeDripValves();
-  gDripRun = {};
+  Zones::setDripZoneGroups({});
 }
 
-void setGrassZoneGroups(const ZoneRunConfig& cfg) { gGrassRun = cfg; }
-void setDripZoneGroups(const ZoneRunConfig& cfg)  { gDripRun  = cfg; }
-const ZoneRunConfig& getGrassRunConfig() { return gGrassRun; }
-const ZoneRunConfig& getDripRunConfig()  { return gDripRun; }
 
 bool isGrassIrrigating() { return grassIrrigationRequested; }
 bool isDripIrrigating()  { return dripIrrigationRequested; }
@@ -484,17 +454,17 @@ void stopFilling() {
 bool isFillingActive() { return fillingRequested; }
 bool isFillingEnabled() { return fillingEnabled; }
 bool isDrainingDisabled() { return drainingDisabled; }
-int8_t getGrassZoneIndex() { return grass_zone_index; }
+int8_t getGrassZoneIndex() { return Zones::getGrassZoneIndex(); }
 uint32_t getPressureRawValue() { return pressureRaw; }
 
 // Remaining-time accessors (ms). Return 0 when not running.
 uint32_t getGrassRemainingMs() {
   if (!grassIrrigationRequested) return 0;
-  if (gGrassRun.count > 0 && gGrassRun.groupMs > 0) {
-    uint32_t groupElapsed = millis() - lastTimeGrassZoneSwitched;
-    uint32_t groupLeft = groupElapsed >= gGrassRun.groupMs ? 0 : gGrassRun.groupMs - groupElapsed;
-    uint32_t remaining = gGrassRun.count - gGrassRun.activeIdx;
-    return groupLeft + (remaining > 1 ? (remaining - 1) * gGrassRun.groupMs : 0);
+  const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
+  if (grassRun.count > 0 && grassRun.groupMs > 0) {
+    uint32_t totalMs = (uint32_t)grassRun.count * grassRun.groupMs;
+    uint32_t elapsed = millis() - lastTimeGrassIrrigationRequested;
+    return elapsed >= totalMs ? 0 : totalMs - elapsed;
   }
   if (grassMaxMs == 0) return 0;
   uint32_t elapsed = millis() - lastTimeGrassIrrigationRequested;
@@ -502,9 +472,10 @@ uint32_t getGrassRemainingMs() {
 }
 uint32_t getGrassGroupRemainingMs() {
   if (!grassIrrigationRequested) return 0;
-  if (gGrassRun.count > 0 && gGrassRun.groupMs > 0) {
+  const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
+  if (grassRun.count > 0 && grassRun.groupMs > 0) {
     uint32_t elapsed = millis() - lastTimeGrassZoneSwitched;
-    return elapsed >= gGrassRun.groupMs ? 0 : gGrassRun.groupMs - elapsed;
+    return elapsed >= grassRun.groupMs ? 0 : grassRun.groupMs - elapsed;
   }
   if (grassMaxMs == 0 || controllerConfig.numberOfGrassZones <= 1) return 0;
   uint32_t perZoneMs = grassMaxMs / (controllerConfig.numberOfGrassZones - 1);
@@ -513,11 +484,11 @@ uint32_t getGrassGroupRemainingMs() {
 }
 uint32_t getDripRemainingMs() {
   if (!dripIrrigationRequested) return 0;
-  if (gDripRun.count > 0 && gDripRun.groupMs > 0) {
-    uint32_t groupElapsed = millis() - lastTimeDripZoneSwitched;
-    uint32_t groupLeft = groupElapsed >= gDripRun.groupMs ? 0 : gDripRun.groupMs - groupElapsed;
-    uint32_t remaining = gDripRun.count - gDripRun.activeIdx;
-    return groupLeft + (remaining > 1 ? (remaining - 1) * gDripRun.groupMs : 0);
+  const ZoneRunConfig& dripRun = Zones::getDripRunConfig();
+  if (dripRun.count > 0 && dripRun.groupMs > 0) {
+    uint32_t totalMs = (uint32_t)dripRun.count * dripRun.groupMs;
+    uint32_t elapsed = millis() - lastTimeDripIrrigationRequested;
+    return elapsed >= totalMs ? 0 : totalMs - elapsed;
   }
   if (dripMaxMs == 0) return 0;
   uint32_t elapsed = millis() - lastTimeDripIrrigationRequested;
@@ -525,9 +496,10 @@ uint32_t getDripRemainingMs() {
 }
 uint32_t getDripGroupRemainingMs() {
   if (!dripIrrigationRequested) return 0;
-  if (gDripRun.count > 0 && gDripRun.groupMs > 0) {
+  const ZoneRunConfig& dripRun = Zones::getDripRunConfig();
+  if (dripRun.count > 0 && dripRun.groupMs > 0) {
     uint32_t elapsed = millis() - lastTimeDripZoneSwitched;
-    return elapsed >= gDripRun.groupMs ? 0 : gDripRun.groupMs - elapsed;
+    return elapsed >= dripRun.groupMs ? 0 : dripRun.groupMs - elapsed;
   }
   return 0;
 }
@@ -587,17 +559,20 @@ void loop() {
     lastTimeShowTime = currentTime;
 
     if (grassIrrigationRequested) {
-      if (gGrassRun.count > 0 && gGrassRun.groupMs > 0) {
-        // Group-based: cycle through zone groups
+      const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
+      if (grassRun.count > 0 && grassRun.groupMs > 0) {
+        // Group-based: cycle through zone groups, wrap around, stop on total time
         uint32_t groupElapsed = currentTime - lastTimeGrassZoneSwitched;
-        if (groupElapsed >= gGrassRun.groupMs) {
-          uint8_t nextIdx = gGrassRun.activeIdx + 1;
-          if (nextIdx >= gGrassRun.count) {
+        if (groupElapsed >= grassRun.groupMs) {
+          uint32_t totalMs = (uint32_t)grassRun.count * grassRun.groupMs;
+          uint32_t totalElapsed = currentTime - lastTimeGrassIrrigationRequested;
+          if (totalElapsed >= totalMs) {
             stopGrassIrrigation();
-            Serial.println("Grass irrigation completed (all groups done)");
+            Serial.println("Grass irrigation completed");
           } else {
-            switchGrassGroup(nextIdx);
-            Serial.println("Grass → group " + String(nextIdx));
+            Zones::changeGrassZone(+1);
+            lastTimeGrassZoneSwitched = millis();
+            Serial.println("Grass → group " + String(grassRun.activeIdx));
           }
         }
       } else {
@@ -609,24 +584,30 @@ void loop() {
         } else {
           uint32_t switchMs = controllerConfig.numberOfGrassZones > 1
             ? grassMaxMs / (controllerConfig.numberOfGrassZones - 1) : grassMaxMs;
-          if ((currentTime - lastTimeGrassZoneSwitched) >= switchMs) changeGrassZone(+1);
+          if ((currentTime - lastTimeGrassZoneSwitched) >= switchMs) {
+            Zones::changeGrassZone(+1);
+            lastTimeGrassZoneSwitched = currentTime;
+          }
           for (uint8_t i = 1; i < controllerConfig.numberOfGrassZones; i++)
-            setOutput(grassZones[i], i != grass_zone_index);
+            setOutput(grassZones[i], i != Zones::getGrassZoneIndex());
         }
       }
     }
 
     if (dripIrrigationRequested) {
-      if (gDripRun.count > 0 && gDripRun.groupMs > 0) {
+      const ZoneRunConfig& dripRun = Zones::getDripRunConfig();
+      if (dripRun.count > 0 && dripRun.groupMs > 0) {
         uint32_t groupElapsed = currentTime - lastTimeDripZoneSwitched;
-        if (groupElapsed >= gDripRun.groupMs) {
-          uint8_t nextIdx = gDripRun.activeIdx + 1;
-          if (nextIdx >= gDripRun.count) {
+        if (groupElapsed >= dripRun.groupMs) {
+          uint32_t totalMs = (uint32_t)dripRun.count * dripRun.groupMs;
+          uint32_t totalElapsed = currentTime - lastTimeDripIrrigationRequested;
+          if (totalElapsed >= totalMs) {
             stopDripIrrigation();
-            Serial.println("Drip irrigation completed (all groups done)");
+            Serial.println("Drip irrigation completed");
           } else {
-            switchDripGroup(nextIdx);
-            Serial.println("Drip → group " + String(nextIdx));
+            Zones::changeDripZone(+1);
+            lastTimeDripZoneSwitched = millis();
+            Serial.println("Drip → group " + String(dripRun.activeIdx));
           }
         }
       } else {
@@ -888,8 +869,11 @@ void handleButtons() {
       case BUTTON_GRASS_MASK:    // Grass button
         if (grassIrrigationRequested) {
           stopGrassIrrigation();
+          restoreAreaManualStop("Grass");
           websocketNotifyHardwareCommand("stop", "Grass");
         } else {
+          Areas::configureAreaZones("Grass", areas, numAreas);
+          armAreaManualStart("Grass");
           startGrassIrrigation();
           websocketNotifyHardwareCommand("start", "Grass");
         }
@@ -897,16 +881,20 @@ void handleButtons() {
       case BUTTON_DRIP_MASK:    // Drip button
         if (dripIrrigationRequested) {
           stopDripIrrigation();
+          restoreAreaManualStop("Drip");
           websocketNotifyHardwareCommand("stop", "Drip");
         } else {
+          Areas::configureAreaZones("Drip", areas, numAreas);
+          armAreaManualStart("Drip");
           startDripIrrigation();
           websocketNotifyHardwareCommand("start", "Drip");
         }
         break;
       case BUTTON_ZONE_SWITCH_MASK:    // Zone Switch button
         if (grassIrrigationRequested) {
-          changeGrassZone(+1);
-          websocketNotifyHardwareCommand("zone_next", "Grass", grass_zone_index);
+          Zones::changeGrassZone(+1);
+          lastTimeGrassZoneSwitched = millis();
+          websocketNotifyHardwareCommand("zone_next", "Grass", Zones::getGrassZoneIndex());
         }
         break;
       case BUTTONS_FILL_GRASS_MASK:    // Filling and Grass buttons together

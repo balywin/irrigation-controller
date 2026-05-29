@@ -203,7 +203,9 @@ bool checkConnection() {
     if (s != "") {
       if (s != "Disconnected") Serial.println(s);
       if (s == "Disconnected" || s == "Cable disconnected") {
+#ifdef WIFI_NO_ETHERNET
         oled_show(1, s);
+#endif
         oled.drawBitmap(120, 8, disconIcon, 8, 8, OLED_WHITE);
         oled_clear_line(2);
       } else if (s == "WiFi Connected" || s == "Cable connected") {

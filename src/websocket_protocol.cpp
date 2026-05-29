@@ -6,6 +6,7 @@
 
 #include "main.h"
 #include "file_utils.h"
+#include "zones.h"
 
 namespace {
 
@@ -207,7 +208,7 @@ String buildStatusJson() {
   sensors["tankPressure"] = static_cast<long>(getPressureRawValue());
 
   JsonObject areas = data["areas"].to<JsonObject>();
-  const ZoneRunConfig& gr = getGrassRunConfig();
+  const ZoneRunConfig& gr = Zones::getGrassRunConfig();
   JsonObject grass = areas["Grass"].to<JsonObject>();
   grass["running"]         = isGrassIrrigating();
   grass["manuallyStarted"] = isAreaManuallyStarted("Grass");
@@ -229,7 +230,7 @@ String buildStatusJson() {
     }
   }
 
-  const ZoneRunConfig& dr = getDripRunConfig();
+  const ZoneRunConfig& dr = Zones::getDripRunConfig();
   JsonObject drip = areas["Drip"].to<JsonObject>();
   drip["running"]         = isDripIrrigating();
   drip["manuallyStarted"] = isAreaManuallyStarted("Drip");
@@ -391,11 +392,11 @@ bool fireSchedule(int8_t areaIdx, int8_t schedIdx, String& outCode, String& outM
     outCode = "bad_request"; outMsg = "no zones configured in schedule"; return false;
   }
   if (areaIdx == 0) {
-    setGrassZoneGroups(cfg);
+    Zones::setGrassZoneGroups(cfg);
     gGrassScheduleActive = static_cast<int8_t>(schedIdx);
     startGrassIrrigation();
   } else {
-    setDripZoneGroups(cfg);
+    Zones::setDripZoneGroups(cfg);
     gDripScheduleActive = static_cast<int8_t>(schedIdx);
     startDripIrrigation();
   }
@@ -428,14 +429,14 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     if (norm == "Grass") {
       uint32_t gMs = durMin > 0 ? durMin * 60000UL : controllerConfig.grassMaxMinutes * 60000UL;
       ZoneRunConfig cfg = parseZoneGroups(extras["zones"], gMs);
-      setGrassZoneGroups(cfg);
+      Zones::setGrassZoneGroups(cfg);
       gGrassScheduleActive = -1;
       disarmAreaSchedule("Grass", gDisarmGrass);
       startGrassIrrigation();
     } else if (norm == "Drip") {
       uint32_t gMs = durMin > 0 ? durMin * 60000UL : controllerConfig.dripMaxMinutes * 60000UL;
       ZoneRunConfig cfg = parseZoneGroups(extras["zones"], gMs);
-      setDripZoneGroups(cfg);
+      Zones::setDripZoneGroups(cfg);
       gDripScheduleActive = -1;
       disarmAreaSchedule("Drip", gDisarmDrip);
       startDripIrrigation();
@@ -485,9 +486,9 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     int gi = extras["groupIndex"] | -1;
     if (norm == "Grass") {
       if (!isGrassIrrigating()) { outCode = "conflict"; outMsg = "Grass not running"; return false; }
-      if (gi < 0 || gi >= (int)getGrassRunConfig().count) { outCode = "bad_request"; outMsg = "groupIndex out of range"; return false; }
+      if (gi < 0 || gi >= (int)Zones::getGrassRunConfig().count) { outCode = "bad_request"; outMsg = "groupIndex out of range"; return false; }
       if (!extras["zones"].isNull()) {
-        ZoneRunConfig cfg = getGrassRunConfig();
+        ZoneRunConfig cfg = Zones::getGrassRunConfig();
         JsonArrayConst zones = extras["zones"].as<JsonArrayConst>();
         uint8_t sz = 0;
         for (JsonVariantConst z : zones) {
@@ -495,14 +496,14 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
           if (sz < MAX_ZONES_PER_GROUP && id >= 1) cfg.zoneIds[gi][sz++] = id;
         }
         cfg.sizes[gi] = sz;
-        setGrassZoneGroups(cfg);
+        Zones::setGrassZoneGroups(cfg);
       }
       switchGrassGroup((uint8_t)gi);
     } else if (norm == "Drip") {
       if (!isDripIrrigating()) { outCode = "conflict"; outMsg = "Drip not running"; return false; }
-      if (gi < 0 || gi >= (int)getDripRunConfig().count) { outCode = "bad_request"; outMsg = "groupIndex out of range"; return false; }
+      if (gi < 0 || gi >= (int)Zones::getDripRunConfig().count) { outCode = "bad_request"; outMsg = "groupIndex out of range"; return false; }
       if (!extras["zones"].isNull()) {
-        ZoneRunConfig cfg = getDripRunConfig();
+        ZoneRunConfig cfg = Zones::getDripRunConfig();
         JsonArrayConst zones = extras["zones"].as<JsonArrayConst>();
         uint8_t sz = 0;
         for (JsonVariantConst z : zones) {
@@ -510,7 +511,7 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
           if (sz < MAX_ZONES_PER_GROUP && id >= 1) cfg.zoneIds[gi][sz++] = id;
         }
         cfg.sizes[gi] = sz;
-        setDripZoneGroups(cfg);
+        Zones::setDripZoneGroups(cfg);
       }
       switchDripGroup((uint8_t)gi);
     } else {
@@ -595,12 +596,12 @@ void checkSchedules() {
 
       gLastFiredMin[ai][si] = epochMin;
       if (ai == 0) {
-        setGrassZoneGroups(cfg);
+        Zones::setGrassZoneGroups(cfg);
         gGrassScheduleActive = static_cast<int8_t>(si);
         startGrassIrrigation();
         Serial.printf("[schedule] Grass schedule %d fired at %02u:%02u\n", si, h, m);
       } else {
-        setDripZoneGroups(cfg);
+        Zones::setDripZoneGroups(cfg);
         gDripScheduleActive = static_cast<int8_t>(si);
         startDripIrrigation();
         Serial.printf("[schedule] Drip schedule %d fired at %02u:%02u\n", si, h, m);
@@ -706,6 +707,16 @@ void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventTyp
 }
 
 }  // namespace
+
+void armAreaManualStart(const char* area) {
+  if (strcmp(area, "Grass") == 0) { gGrassScheduleActive = -1; disarmAreaSchedule("Grass", gDisarmGrass); }
+  else if (strcmp(area, "Drip") == 0) { gDripScheduleActive = -1; disarmAreaSchedule("Drip", gDisarmDrip); }
+}
+
+void restoreAreaManualStop(const char* area) {
+  if (strcmp(area, "Grass") == 0) { restoreAreaSchedule("Grass", gDisarmGrass); gGrassScheduleActive = -1; }
+  else if (strcmp(area, "Drip") == 0) { restoreAreaSchedule("Drip", gDisarmDrip); gDripScheduleActive = -1; }
+}
 
 void websocketNotifyHardwareCommand(const char* action, const char* target, int zone) {
   JsonDocument doc;

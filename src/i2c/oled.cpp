@@ -34,9 +34,11 @@ void oled_clear_keep_last(uint8_t line, uint8_t size, uint8_t last) {
 
 void oled_clear_from(uint8_t line, uint8_t size, uint8_t from, uint8_t len) {
   oled.setTextSize(size);
-  uint16_t width = 6 * size * (len + 1) - 4;
-  if (width > SCREEN_WIDTH - 6 * size * from) width = SCREEN_WIDTH - 6 * size * from;
-  oled.fillRect(6 * size * from, 8 * line, width, 8 * size, 0);
+  int16_t from_px = 6 * size * from;
+  int16_t width = 6 * size * len;
+  if (width > SCREEN_WIDTH - from_px) width = SCREEN_WIDTH - from_px;
+  if (width + from_px >= SCREEN_WIDTH - 2) width = SCREEN_WIDTH - from_px;
+  oled.fillRect(from_px, 8 * line, width, 8 * size, 0);
 }
 
 void oled_show(uint8_t line, String text, uint8_t size, bool clear) {
