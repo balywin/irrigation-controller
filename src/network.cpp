@@ -1,4 +1,5 @@
 #include <LittleFS.h>
+#include <Update.h>
 
 #include "hw_config.h"
 #include "network.h"
@@ -6,7 +7,8 @@
 #include "webserver_embedded.h"
 #include "websocket_protocol.h"
 #include "fallback_page.h"
-#include <Update.h>
+
+#include <ESPAsyncWebServer.h>
 
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
@@ -18,19 +20,51 @@
     {"VivacarM", "@Titi14#Papazov22%"},
     {"Vivacar", "@Titi14#Papazov22%"}
   };
-  const unsigned char conIcon[] PROGMEM = { // wifi icon
+  const unsigned char conIcon[] PROGMEM = { // connected icon
     0x00, 0x3C, 0x42, 0x99, 0x24, 0x42, 0x18, 0x18
   };
-  const unsigned char disconIcon[] PROGMEM = { // wifi icon
+  const unsigned char disconIcon[] PROGMEM = { // disconnected icon
     0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00
   };
 #else
-  #include <WebServer_WT32_ETH01.h>
-  const unsigned char conIcon[] PROGMEM = { // wifi icon
-    0x00, 0x33, 0x66, 0x33, 0x66, 0x33, 0x66, 0x00
+  #include <ETH.h>
+
+  bool WT32_ETH01_eth_connected = false;
+
+  void WT32_ETH01_event(WiFiEvent_t event) {
+    switch (event) {
+      case ARDUINO_EVENT_ETH_START:
+        ETH.setHostname("WT32-ETH01");
+        break;
+      case ARDUINO_EVENT_ETH_CONNECTED:
+        break;
+      case ARDUINO_EVENT_ETH_GOT_IP:
+        WT32_ETH01_eth_connected = true;
+        break;
+      case ARDUINO_EVENT_ETH_DISCONNECTED:
+        WT32_ETH01_eth_connected = false;
+        break;
+      default:
+        break;
+    }
+  }
+
+  void WT32_ETH01_onEvent() {
+    WiFi.onEvent(WT32_ETH01_event);
+  }
+
+  bool WT32_ETH01_isConnected() {
+    return WT32_ETH01_eth_connected;
+  }
+
+  #define WEBSERVER_WT32_ETH01_VERSION "WebServer_WT32_ETH01 v1.5.1"
+  #define SHIELD_TYPE "LAN8720"
+
+  const unsigned char conIcon[] PROGMEM = { // connected icon
+    0x24, 0x24, 0xFF, 0x81, 0x81, 0x81, 0x42, 0x3C
   };
-  const unsigned char disconIcon[] PROGMEM = { // wifi icon
-    0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00
+  const unsigned char disconIcon[] PROGMEM = { // disconnected icon
+    0xFF, 0x44, 0x28, 0x10, 0x28, 0x44, 0xFF, 0x00
   };
 #endif
 
@@ -169,7 +203,7 @@ bool checkConnection() {
     if (s != "") {
       if (s != "Disconnected") Serial.println(s);
       if (s == "Disconnected" || s == "Cable disconnected") {
-        oled_clear_from(1, 1, SCREEN_WIDTH / 6 - 1);
+        oled_show(1, s);
         oled.drawBitmap(120, 8, disconIcon, 8, 8, OLED_WHITE);
         oled_clear_line(2);
       } else if (s == "WiFi Connected" || s == "Cable connected") {

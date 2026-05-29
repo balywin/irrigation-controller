@@ -14,7 +14,7 @@
   } WiFiCredentials;
 #endif
 
-#include <ESPAsyncWebServer.h>
+class AsyncWebServer;
 
 // HTTP server for web UI and API
 extern AsyncWebServer server;
