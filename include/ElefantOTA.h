@@ -108,14 +108,14 @@ class ElegantOTAClass{
     void setAutoReboot(bool enable);
     void loop();
 
-    void onStart(std::function<void()> callable);
+    void onStart(std::function<void(OTA_Mode)> callable);
     void onProgress(std::function<void(size_t current, size_t final)> callable);
     void onEnd(std::function<void(bool success)> callable);
     
   private:
-    ELEGANTOTA_WEBSERVER *_server;
+    ELEGANTOTA_WEBSERVER *_server{};
 
-    bool _authenticate;
+    bool _authenticate{};
     String _username;
     String _password;
     String _currentFWVersion;
@@ -125,9 +125,9 @@ class ElegantOTAClass{
     unsigned long _reboot_request_millis = 0;
 
     String _update_error_str = "";
-    unsigned long _current_progress_size;
+    unsigned long _current_progress_size{};
 
-    std::function<void()> preUpdateCallback = NULL;
+    std::function<void(OTA_Mode)> preUpdateCallback = NULL;
     std::function<void(size_t current, size_t final)> progressUpdateCallback = NULL;
     std::function<void(bool success)> postUpdateCallback = NULL;
 };

@@ -1,0 +1,337 @@
+{
+  "app": {
+    "device_name": "ESP32-Irrigator",
+    "wifi_ssid": "",
+    "wifi_password": "",
+    "filling": {
+      "enabled": true,
+      "max_minutes": 16,
+      "pump_id": 3,
+      "level_filtering_seconds": 10,
+      "leakage_detector_threshold": 3,
+      "high_level_pressure": 120000,
+      "low_level_pressure": -200000
+    },
+    "areas": [
+      {
+        "id": "Grass",
+        "enabled": true,
+        "description": "Irrigation for grass areas",
+        "pump_id": 1,
+        "pump_start_delay_seconds": 6,
+        "main_valve_id": 1,
+        "zone_ids": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "zone_names": [
+          "Left",
+          "Mid-left",
+          "Mid-right",
+          "Right"
+        ],
+        "max_minutes": 20
+      },
+      {
+        "id": "Drip",
+        "enabled": true,
+        "description": "Irrigation for drip areas",
+        "pump_id": 2,
+        "pump_start_delay_seconds": 6,
+        "main_valve_id": 2,
+        "zone_ids": [
+          6,
+          7,
+          8,
+          9
+        ],
+        "zone_names": [
+          "Trees",
+          "Flowers",
+          "Tomatoes",
+          "Herbs"
+        ],
+        "max_minutes": 480
+      }
+    ]
+  },
+  "schedule": {
+    "grass": {
+      "enabled": true,
+      "suspendAboveTempEnabled": true,
+      "suspendAboveTemp": 34,
+      "schedules": [
+        {
+          "enabled": true,
+          "zones": [
+            [
+              1,
+              3
+            ],
+            [
+              2,
+              4
+            ],
+            [
+              3,
+              5
+            ]
+          ],
+          "durationMinutes": 30,
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "startTimes": [
+            "07:00",
+            "19:00"
+          ],
+          "sunriseSchedule": {
+            "enabled": false,
+            "sunriseOffsetMinutes": 0
+          },
+          "sunsetSchedule": {
+            "enabled": false,
+            "sunsetOffsetMinutes": 0
+          }
+        },
+        {
+          "enabled": true,
+          "zones": [
+            [
+              2,
+              3
+            ],
+            [
+              1,
+              4
+            ],
+            [
+              2,
+              5
+            ]
+          ],
+          "durationMinutes": 30,
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "startTimes": [
+            "07:00",
+            "19:00"
+          ],
+          "sunriseSchedule": {
+            "enabled": true,
+            "sunriseOffsetMinutes": 10
+          },
+          "sunsetSchedule": {
+            "enabled": true,
+            "sunsetOffsetMinutes": 10
+          }
+        }
+      ]
+    },
+    "drip": {
+      "enabled": true,
+      "suspendAboveTempEnabled": false,
+      "suspendAboveTemp": 36,
+      "schedules": [
+        {
+          "enabled": true,
+          "zones": [
+            [
+              1,
+              4
+            ],
+            [
+              2,
+              3
+            ],
+            [
+              1,
+              2
+            ]
+          ],
+          "durationMinutes": 60,
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "startTimes": [
+            "07:00",
+            "19:00"
+          ],
+          "sunriseSchedule": {
+            "enabled": false,
+            "sunriseOffsetMinutes": 0
+          },
+          "sunsetSchedule": {
+            "enabled": false,
+            "sunsetOffsetMinutes": 0
+          }
+        },
+        {
+          "enabled": true,
+          "zones": [
+            [
+              3,
+              4
+            ],
+            [
+              1,
+              5
+            ],
+            [
+              2,
+              3
+            ]
+          ],
+          "durationMinutes": 90,
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "startTimes": [
+            "07:00",
+            "19:00"
+          ],
+          "sunriseSchedule": {
+            "enabled": true,
+            "sunriseOffsetMinutes": 10
+          },
+          "sunsetSchedule": {
+            "enabled": true,
+            "sunsetOffsetMinutes": 10
+          }
+        }
+      ]
+    },
+    "Grass": {
+      "enabled": true,
+      "suspendAboveTempEnabled": true,
+      "suspendAboveTemp": 35,
+      "suspendOnRainEnabled": false,
+      "suspendOnRainAbove": 2,
+      "schedules": [
+        {
+          "enabled": true,
+          "zones": [
+            [
+              1
+            ],
+            [
+              2
+            ],
+            [
+              3
+            ],
+            [
+              4
+            ]
+          ],
+          "durationMinutes": 5,
+          "startTimes": [
+            "08:00",
+            "18:00"
+          ],
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "sunriseSchedule": {
+            "enabled": false,
+            "sunriseOffsetMinutes": 0
+          },
+          "sunsetSchedule": {
+            "enabled": false,
+            "sunsetOffsetMinutes": 0
+          }
+        }
+      ]
+    }
+  },
+  "manual_control": {
+    "Grass": {
+      "zones": [
+        [
+          3
+        ],
+        [
+          4
+        ],
+        [
+          1
+        ],
+        [
+          2
+        ]
+      ],
+      "shuffle": false,
+      "durationMinutes": 4,
+      "delayedStart": "0m",
+      "presets": [
+        {
+          "name": "2341",
+          "zones": [
+            [
+              2
+            ],
+            [
+              3
+            ],
+            [
+              4
+            ],
+            [
+              1
+            ]
+          ],
+          "shuffle": false,
+          "durationMinutes": 4,
+          "delayedStart": "0m"
+        }
+      ]
+    },
+    "Drip": {
+      "zones": [
+        [
+          6
+        ],
+        [
+          7
+        ]
+      ],
+      "shuffle": false,
+      "durationMinutes": 20,
+      "delayedStart": "0m",
+      "presets": []
+    }
+  }
+}
