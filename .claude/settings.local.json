@@ -25,7 +25,11 @@
       "Bash(/Users/baa1sf3/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh *)",
       "Bash(unset CLAUDECODE)",
       "Bash(grep -E \"\\\\.svelte$|^d\")",
-      "Bash(xargs ls -lh)"
+      "Bash(xargs ls -lh)",
+      "Bash(sed -n '383,392p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/src/main.cpp)",
+      "Bash(sed -n '62,71p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/src/zones.cpp)",
+      "Bash(sed -n '371,380p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/src/main.cpp)",
+      "Bash(sed -n '51,60p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/src/zones.cpp)"
     ]
   }
 }

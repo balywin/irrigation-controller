@@ -57,6 +57,8 @@ extern JsonDocument scheduleJson;
 extern uint32_t fillingMaxMs;
 extern uint32_t grassMaxMs;
 extern uint32_t dripMaxMs;
+extern uint8_t grassZones[MAX_NUMBER_OF_GRASS_ZONES];
+extern uint8_t dripZones[MAX_NUMBER_OF_DRIP_ZONES];
 
 #ifdef DEV_BOARD_OLED
 #define setGrassMainValve(value)
@@ -88,6 +90,8 @@ void ScanPCFInputs();
 void setOutput(uint8_t output_number, bool value);
 bool getOutput(uint8_t output_number);
 bool getInput(uint8_t input_number);
+void closeGrassValves();
+void closeDripValves();
 void handleButtons();
 void handleLevelSwitches();
 void setup_NTP();
@@ -96,7 +100,6 @@ void applyConfig();
 void checkForDefects();
 void showDiagInfo();
 void controlOutputs();
-void changeGrassZone(int8_t step);
 void startGrassIrrigation();
 void stopGrassIrrigation();
 void startDripIrrigation();
@@ -122,10 +125,6 @@ uint32_t getDripRemainingMs();
 uint32_t getDripGroupRemainingMs();
 uint32_t getFillingRemainingMs();
 // Zone group management — called by WS protocol and schedule engine.
-void setGrassZoneGroups(const ZoneRunConfig& cfg);
-void setDripZoneGroups(const ZoneRunConfig& cfg);
-const ZoneRunConfig& getGrassRunConfig();
-const ZoneRunConfig& getDripRunConfig();
 void switchGrassGroup(uint8_t newIdx);
 void switchDripGroup(uint8_t newIdx);
 // Wall-clock time from RTC (or NTP if no RTC). Returns false if time unknown.
