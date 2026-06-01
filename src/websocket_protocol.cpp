@@ -742,6 +742,7 @@ void handleMessage(AsyncWebSocketClient* client, const uint8_t* payload, size_t 
       sendConfigSaved(client, fileName, false, reqId, "write failed");
       return;
     }
+    if (fileName == "schedule.json") loadJsonFile(scheduleJson, "/config/schedule.json");
     sendConfigSaved(client, fileName, true, reqId);
     return;
   }
