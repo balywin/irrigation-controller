@@ -145,6 +145,9 @@ const APP_CONFIG = (() => {
 })();
 function persistAppConfig() { try { localStorage.setItem('previewAppConfig', JSON.stringify(APP_CONFIG)); } catch {} }
 const SCHEDULE_CONFIG = {
+  Filling: { enabled: true, schedules: [
+    { enabled: true, durationMinutes: 15, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } }
+  ]},
   Grass: { enabled: true, suspendAboveTempEnabled: true, suspendAboveTemp: 34, suspendOnRainEnabled: true, suspendOnRainAbove: 2, schedules: [
     { enabled: true, zones: [[1],[2]], durationMinutes: 30, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } },
     { enabled: true, zones: [[3,4]], durationMinutes: 30, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: true, sunriseOffsetMinutes: 10 }, sunsetSchedule: { enabled: true, sunsetOffsetMinutes: 10 } }
@@ -779,7 +782,28 @@ function buildManualTab() {
       fReason,
       h('span', { style: 'margin-left:auto;display:flex;gap:1rem;align-items:center;' },
         h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, `Pump ${f.pump_id}`), h('span', { class: 'status-value status-off' }, 'OFF')),
-        h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, 'Water'), h('span', { class: 'status-value' }, `${MOCK_WATER_LEVEL}%`))))
+        h('span', {}, h('span', { class: 'status-label', style: 'margin-right:0.3rem;' }, 'Water'), h('span', { class: 'status-value' }, `${MOCK_WATER_LEVEL}%`)))),
+    (function() {
+      const FILLING_DURATION_PRESETS = [5, 10, 15, 20];
+      let fillingDuration = 15;
+      const durationBtns = FILLING_DURATION_PRESETS.map(d => {
+        const b = h('button', { class: `btn btn-sm ${fillingDuration === d ? 'btn-primary' : 'btn-secondary'}` }, String(d));
+        b.addEventListener('click', () => {
+          fillingDuration = d;
+          durationBtns.forEach((btn, i) => {
+            btn.className = `btn btn-sm ${FILLING_DURATION_PRESETS[i] === d ? 'btn-primary' : 'btn-secondary'}`;
+          });
+        });
+        return b;
+      });
+      const durationInput = h('input', { type: 'number', min: '1', style: 'width:60px;', value: '15' });
+      durationInput.addEventListener('input', () => { fillingDuration = Number(durationInput.value); });
+      const durationRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;margin-top:0.5rem;' },
+        h('span', {}, 'Duration (min)'),
+        h('div', { class: 'preset-row', style: 'margin-top:0;' }, ...durationBtns, durationInput, h('span', { style: 'font-size:0.85rem;color:#6b7280;' }, 'min'))
+      );
+      return durationRow;
+    })()
   );
 
   return h('div', {}, fillingCard, ...cards);
@@ -965,6 +989,103 @@ function buildScheduleCard(sched, index, area, onstart) {
   return card;
 }
 
+// Fill Schedule tab
+function buildFillScheduleCard(sched, index) {
+  const FILL_DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90];
+  const DAY_LABELS_LOCAL = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const card = h('div', { class: 'card', style: sched.enabled ? '' : 'opacity:0.65' });
+  const enableToggle = toggle(sched.enabled, c => { card.style.opacity = c ? '' : '0.65'; });
+  const header = h('div', { class: 'card-header' },
+    h('div', { style: 'display:flex;align-items:center;gap:0.5rem;' },
+      h('h3', { style: 'margin:0;' }, `Filling Schedule ${index + 1}`),
+      enableToggle),
+    h('button', { class: 'btn btn-danger' }, 'Delete'));
+
+  // Duration
+  let dur = sched.durationMinutes ?? 15;
+  const durBtns = FILL_DURATION_PRESETS.map(d => {
+    const b = h('button', { class: `btn btn-sm ${dur === d ? 'btn-primary' : 'btn-secondary'}` }, String(d));
+    b.addEventListener('click', () => {
+      dur = d;
+      durBtns.forEach((btn, i) => { btn.className = `btn btn-sm ${FILL_DURATION_PRESETS[i] === d ? 'btn-primary' : 'btn-secondary'}`; });
+      durInput.value = String(d);
+    });
+    return b;
+  });
+  const durInput = h('input', { type: 'number', min: '1', style: 'width:60px;', value: String(dur) });
+  const durRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' },
+    h('span', {}, 'Duration (min)'),
+    h('div', { class: 'preset-row', style: 'margin-top:0;' }, ...durBtns, durInput));
+
+  // Days
+  const days = (sched.daysOfWeek ?? [1,2,3,4,5,6,7]).slice();
+  const daysRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' },
+    h('span', {}, 'Days of Week'),
+    h('div', { class: 'days' },
+      ...[1,2,3,4,5,6,7].map(d => {
+        const lbl = h('label', {});
+        const cb = h('input', { type: 'checkbox' }); cb.checked = days.includes(d);
+        lbl.append(cb, ` ${DAY_LABELS_LOCAL[d-1]}`);
+        return lbl;
+      })));
+
+  // Start times
+  const timesBox = h('div', { class: 'time-list' });
+  const addTimeBtn = h('button', { class: 'btn btn-secondary btn-sm' }, '+ Add time');
+  const times = (sched.startTimes ?? ['07:00']).slice();
+  function renderTimes() {
+    timesBox.innerHTML = '';
+    times.forEach((t, ti) => {
+      const inp = h('input', { type: 'time', value: t });
+      const delBtn = h('button', { class: 'btn btn-danger btn-sm' }, '✕');
+      delBtn.addEventListener('click', () => { times.splice(ti, 1); renderTimes(); });
+      timesBox.append(h('div', { class: 'time-row' }, inp, delBtn));
+    });
+    timesBox.append(addTimeBtn);
+  }
+  addTimeBtn.addEventListener('click', () => { times.push('08:00'); renderTimes(); });
+  renderTimes();
+  const timesRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' },
+    h('span', {}, 'Start Times'), timesBox);
+
+  // Sunrise/Sunset
+  const sunriseInput = h('input', { type: 'number', style: 'width:55px;', value: String(sched.sunriseSchedule?.sunriseOffsetMinutes ?? 0) });
+  sunriseInput.disabled = !(sched.sunriseSchedule?.enabled ?? false);
+  const sunriseRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:1.5rem;' },
+    h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' },
+      'Start ', sunriseInput, ' min. after sunrise ',
+      toggle(sched.sunriseSchedule?.enabled ?? false, c => { sunriseInput.disabled = !c; })),
+    h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' }, (() => {
+      const inp = h('input', { type: 'number', style: 'width:55px;', value: String(sched.sunsetSchedule?.sunsetOffsetMinutes ?? 0) });
+      inp.disabled = !(sched.sunsetSchedule?.enabled ?? false);
+      const t = toggle(sched.sunsetSchedule?.enabled ?? false, c => { inp.disabled = !c; });
+      return [document.createTextNode('Start '), inp, document.createTextNode(' min. after sunset '), t];
+    })()));
+
+  card.append(header, durRow, daysRow, timesRow, sunriseRow);
+  return card;
+}
+
+function buildFillScheduleTab() {
+  const sched = SCHEDULE_CONFIG['Filling'] ?? { enabled: true, schedules: [] };
+  const schedContent = h('div', {});
+  function renderCards() {
+    schedContent.innerHTML = '';
+    (sched.schedules ?? []).forEach((s, i) => schedContent.append(buildFillScheduleCard(s, i)));
+    schedContent.append(h('button', { class: 'btn btn-secondary' }, '+ Add Schedule'));
+  }
+  renderCards();
+  const headerRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.4rem;' },
+    h('span', {}, 'Filling Schedules enabled'),
+    toggle(sched.enabled, c => { schedContent.style.opacity = c ? '' : '0.55'; }));
+  return h('div', {},
+    headerRow,
+    schedContent,
+    h('div', { class: 'save-bar', style: 'justify-content:space-between;' },
+      h('button', { class: 'btn btn-secondary' }, '+ Add Schedule'),
+      h('button', { class: 'btn btn-primary' }, 'Save')));
+}
+
 // Settings tab
 function buildSettingsTab() {
   const f = APP_CONFIG.filling;
@@ -1029,6 +1150,7 @@ function buildFirmwareTab() {
 const tabDefs = [
   { id: 'manual', label: 'Manual Control', build: buildManualTab },
   ...APP_CONFIG.areas.filter(a => a.enabled !== false).map((a, idx) => ({ id: a.id, label: a.id, color: AREA_COLORS[idx % AREA_COLORS.length], build: () => buildScheduleTab(a, idx) })),
+  ...(APP_CONFIG.filling?.enabled !== false ? [{ id: 'fill_schedule', label: 'Fill Sched', color: '#fb923c', build: buildFillScheduleTab }] : []),
   { id: 'settings', label: 'Settings', build: buildSettingsTab },
   { id: 'firmware', label: 'Firmware', build: buildFirmwareTab }
 ];
@@ -1132,6 +1254,13 @@ function refreshNavDots() {
     if (scheduleActive) { dot.style.background = areaColor(i); dot.style.display = ''; }
     else dot.style.display = 'none';
   });
+  // Fill schedule tab: dot when schedule is active (mock state via fill_schedule_active flag)
+  const fillSchedDot = document.getElementById('nav-dot-fill_schedule');
+  if (fillSchedDot) {
+    const active = state.fillSchedActive ?? false;
+    if (active) { fillSchedDot.style.background = '#fb923c'; fillSchedDot.style.display = ''; }
+    else fillSchedDot.style.display = 'none';
+  }
 }
 
 buildEmergencyBar();

@@ -1,10 +1,10 @@
 #pragma once
 
-//#define DEV_BOARD_OLED
+#define DEV_BOARD_OLED
 //#define PRESSURE_SENSOR
 
 #define OLED_SSD1306
-//#define WIFI_NO_ETHERNET
+#define WIFI_NO_ETHERNET
 
 #ifdef DEV_BOARD_OLED
   #define I2C_SDA 5

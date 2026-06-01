@@ -6,6 +6,7 @@
   import { ws, sendCommand, initWs } from './lib/ws.svelte.js';
   import ManualTab from './tabs/ManualTab.svelte';
   import AreaTab from './tabs/AreaTab.svelte';
+  import FillScheduleTab from './tabs/FillScheduleTab.svelte';
   import SettingsTab from './tabs/SettingsTab.svelte';
   import FirmwareTab from './tabs/FirmwareTab.svelte';
 
@@ -303,6 +304,16 @@
         </button>
       {/if}
     {/each}
+    {#if appConfig?.filling?.enabled !== false}
+      <button class:active={activeTab === 'fill_schedule'}
+        style={`color:#fb923c;${activeTab === 'fill_schedule' ? 'border-bottom-color:#fb923c;' : ''}`}
+        onclick={() => activeTab = 'fill_schedule'}>
+        Fill Sched
+        {#if ws.status?.filling?.scheduleActive === true}
+          <span class="status-dot" style="background:#fb923c"></span>
+        {/if}
+      </button>
+    {/if}
     <button class:active={activeTab === 'settings'} onclick={() => activeTab = 'settings'}>Settings</button>
     <button class:active={activeTab === 'firmware'} onclick={() => activeTab = 'firmware'}>Firmware</button>
   </nav>
@@ -313,6 +324,8 @@
     <p style="padding:1rem;color:#666;">Loading…</p>
   {:else if activeTab === 'manual'}
     <ManualTab {appConfig} bind:manualZones />
+  {:else if activeTab === 'fill_schedule'}
+    <FillScheduleTab />
   {:else if activeTab === 'settings'}
     <SettingsTab bind:config={appConfig} />
   {:else if activeTab === 'firmware'}

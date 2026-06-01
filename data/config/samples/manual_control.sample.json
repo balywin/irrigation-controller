@@ -1,4 +1,7 @@
 {
+    "Filling": {
+        "durationMinutes": 15
+    },
     "Grass": {
         "enabled": true,
         "zones": [[2, 3], [1, 4], [2, 5]],

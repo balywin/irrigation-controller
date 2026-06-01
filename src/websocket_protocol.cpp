@@ -24,7 +24,7 @@ int8_t gDripScheduleActive  = -1;
 // Per-area, per-schedule last-fired tracking (max 8 schedules per area).
 // Stores epoch-minute-within-week: dow*24*60 + hour*60 + minute.
 // Prevents re-firing the same schedule within the same minute.
-uint32_t gLastFiredMin[2][8] = {{0}};
+uint32_t gLastFiredMin[3][8] = {{0}};  // index 2 = Filling
 
 // Per-area schedule auto-disarm: when a manual run starts via WS, the global
 // `[area].enabled` flag in schedule.json is set to false so a scheduled run
@@ -41,6 +41,10 @@ SchedDisarmState gDisarmGrass;
 SchedDisarmState gDisarmDrip;
 bool gPrevRunningGrass = false;
 bool gPrevRunningDrip = false;
+bool gFillingManuallyStarted = false;
+bool gFillingScheduleActive  = false;
+SchedDisarmState gDisarmFilling;
+bool gPrevRunningFilling = false;
 
 const char* DISARM_FILE = "/config/disarm.json";
 
@@ -250,8 +254,8 @@ String buildStatusJson() {
 
   JsonObject filling = data["filling"].to<JsonObject>();
   filling["running"] = isFillingActive();
-  filling["manuallyStarted"] = isFillingActive();
-  filling["scheduleActive"] = false;
+  filling["manuallyStarted"] = gFillingManuallyStarted;
+  filling["scheduleActive"]  = gFillingScheduleActive;
   filling["enabled"] = isFillingEnabled();
   if (isPaused(gPauseUntilFillingMs)) {
     filling["pausedUntil"] = makeIso8601FromNow(gPauseUntilFillingMs);
@@ -443,8 +447,15 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     } else {
       if (durMin > 0) fillingMaxMs = durMin * 60000UL;
       else fillingMaxMs = controllerConfig.fillingMaxMinutes * 60000UL;
+      gFillingManuallyStarted = true;
+      gFillingScheduleActive  = false;
+      disarmAreaSchedule("Filling", gDisarmFilling);
       startFilling();
-      if (!isFillingActive()) { outCode = "conflict"; outMsg = "Tank full"; return false; }
+      if (!isFillingActive()) {
+        gFillingManuallyStarted = false;
+        restoreAreaSchedule("Filling", gDisarmFilling);
+        outCode = "conflict"; outMsg = "Tank full"; return false;
+      }
     }
     return true;
   }
@@ -453,7 +464,12 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     *pauseRef = 0;
     if (norm == "Grass") { stopGrassIrrigation(); restoreAreaSchedule("Grass", gDisarmGrass); gGrassScheduleActive = -1; }
     else if (norm == "Drip") { stopDripIrrigation(); restoreAreaSchedule("Drip", gDisarmDrip); gDripScheduleActive = -1; }
-    else stopFilling();
+    else {
+      stopFilling();
+      gFillingManuallyStarted = false;
+      gFillingScheduleActive  = false;
+      restoreAreaSchedule("Filling", gDisarmFilling);
+    }
     return true;
   }
 
@@ -461,7 +477,12 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     *pauseRef = millis() + PAUSE_1H_MS;
     if (norm == "Grass") { stopGrassIrrigation(); restoreAreaSchedule("Grass", gDisarmGrass); gGrassScheduleActive = -1; }
     else if (norm == "Drip") { stopDripIrrigation(); restoreAreaSchedule("Drip", gDisarmDrip); gDripScheduleActive = -1; }
-    else stopFilling();
+    else {
+      stopFilling();
+      gFillingManuallyStarted = false;
+      gFillingScheduleActive  = false;
+      restoreAreaSchedule("Filling", gDisarmFilling);
+    }
     return true;
   }
 
@@ -607,6 +628,57 @@ void checkSchedules() {
         Serial.printf("[schedule] Drip schedule %d fired at %02u:%02u\n", si, h, m);
       }
       break;  // one schedule fires per area per check
+    }
+  }
+
+  // Filling schedule block (no zones — just duration + startFilling)
+  if (!isPaused(gPauseUntilFillingMs) && !isFillingActive()) {
+    String fillingKey = resolveSchedKey("Filling");
+    JsonVariantConst fillingArea = scheduleJson[fillingKey.c_str()];
+    if (fillingArea.is<JsonObject>()) {
+      bool globalEnabled = fillingArea["enabled"] | true;
+      if (globalEnabled) {
+        JsonArrayConst schedules = fillingArea["schedules"].as<JsonArrayConst>();
+        if (!schedules.isNull()) {
+          int si = 0;
+          for (JsonVariantConst sched : schedules) {
+            if (si >= 8) break;
+            bool schedEnabled = sched["enabled"] | true;
+            if (!schedEnabled) { si++; continue; }
+
+            bool dayMatch = false;
+            JsonArrayConst days = sched["daysOfWeek"].as<JsonArrayConst>();
+            for (JsonVariantConst d : days) {
+              if (d.as<uint8_t>() == schedDow) { dayMatch = true; break; }
+            }
+            if (!dayMatch) { si++; continue; }
+
+            bool timeMatch = false;
+            JsonArrayConst times = sched["startTimes"].as<JsonArrayConst>();
+            for (JsonVariantConst t : times) {
+              const char* ts = t.as<const char*>();
+              if (!ts) continue;
+              uint8_t th = 0, tm = 0;
+              if (sscanf(ts, "%hhu:%hhu", &th, &tm) == 2 && th == h && tm == m) {
+                timeMatch = true; break;
+              }
+            }
+            // Note: sunriseSchedule / sunsetSchedule not yet implemented.
+            if (!timeMatch) { si++; continue; }
+
+            if (gLastFiredMin[2][si] == epochMin) { si++; continue; }
+
+            uint32_t durMin = sched["durationMinutes"] | 15;
+            gLastFiredMin[2][si] = epochMin;
+            fillingMaxMs = durMin * 60000UL;
+            gFillingScheduleActive  = true;
+            gFillingManuallyStarted = false;
+            startFilling();
+            Serial.printf("[schedule] Filling schedule %d fired at %02u:%02u\n", si, h, m);
+            break;
+          }
+        }
+      }
     }
   }
 }
@@ -760,6 +832,14 @@ void websocketProtocolLoop() {
     gDripScheduleActive = -1;
   }
   gPrevRunningDrip = curD;
+
+  bool curF = isFillingActive();
+  if (gPrevRunningFilling && !curF) {
+    restoreAreaSchedule("Filling", gDisarmFilling);
+    gFillingScheduleActive  = false;
+    gFillingManuallyStarted = false;
+  }
+  gPrevRunningFilling = curF;
 
   gWs.cleanupClients();
 

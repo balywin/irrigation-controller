@@ -5,12 +5,16 @@
 
   const DELAY_PRESETS = ['0m', '1m', '5m', '10m', '20m', '30m', '1h', '2h'];
   const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90];
+  const FILLING_DURATION_PRESETS = [5, 10, 15, 20];
   const AREA_COLORS = ['#16a34a', '#2563eb', '#d97706', '#7c3aed', '#dc2626'];
 
   let { appConfig, manualZones = $bindable({}) } = $props();
 
   let areaConfigs = $state({});
   let loadError = $state('');
+  let fillingDuration = $state(15);
+  let loadedFillingDuration = 15;
+  let fillingDurationDirty = $derived(fillingDuration !== loadedFillingDuration);
   // JSON snapshots of config as last saved to firmware; used to detect unsaved changes.
   let loadedConfigs = {};
 
@@ -129,6 +133,9 @@
         manualZones[area.id] = groups.map(g => g.join(''));
         currentGroupIdxs[area.id] = 0;
       }
+      const fc = raw['Filling'] ?? {};
+      fillingDuration = fc.durationMinutes ?? 15;
+      loadedFillingDuration = fillingDuration;
     } catch (e) {
       loadError = e.message;
     }
@@ -335,16 +342,25 @@
     }
   });
 
-  function toggleFilling() {
+  async function toggleFilling() {
     if (pendingAction['filling']) return;
     const manual = ws.status?.filling?.manuallyStarted;
     setPending('filling', manual ? 'stop' : 'start');
     if (manual) {
       sendCommand('stop', 'Filling');
     } else {
-      sendCommand('start', 'Filling', {
-        durationMinutes: Number(fillingCfg?.max_minutes) || 0,
-      });
+      if (fillingDurationDirty) {
+        try {
+          const payload = { ...areaConfigs, Filling: { durationMinutes: fillingDuration } };
+          await saveConfig('manual_control.json', payload);
+          loadedFillingDuration = fillingDuration;
+        } catch (e) {
+          presetError = `Config save failed: ${e.message}`;
+          clearPending('filling');
+          return;
+        }
+      }
+      sendCommand('start', 'Filling', { durationMinutes: fillingDuration });
     }
   }
 
@@ -457,6 +473,19 @@
           <span class="status-value status-on">{ws.status.filling.remaining}</span>
         {/if}
       </span>
+    </div>
+    <div class="field" style="flex-wrap:wrap;gap:0.3rem;margin-top:0.5rem;">
+      <span>Duration (min)</span>
+      <div class="preset-row" style="margin-top:0;">
+        {#each FILLING_DURATION_PRESETS as d}
+          <button type="button" class="btn btn-sm"
+            class:btn-primary={fillingDuration === d}
+            class:btn-secondary={fillingDuration !== d}
+            onclick={() => fillingDuration = d}>{d}</button>
+        {/each}
+        <input type="number" min="1" style="width:60px;" bind:value={fillingDuration} />
+        <span style="font-size:0.85rem;color:#6b7280;">min</span>
+      </div>
     </div>
   </div>
 
