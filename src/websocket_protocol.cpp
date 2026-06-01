@@ -634,9 +634,13 @@ void checkSchedules() {
   // Filling schedule block (no zones — just duration + startFilling)
   if (!isPaused(gPauseUntilFillingMs) && !isFillingActive()) {
     String fillingKey = resolveSchedKey("Filling");
+    Serial.printf("[sched-fill] key=%s hasObj=%d time=%02u:%02u dow=%u epochMin=%lu\n",
+      fillingKey.c_str(), (int)scheduleJson[fillingKey.c_str()].is<JsonObject>(), h, m, schedDow, (unsigned long)epochMin);
     JsonVariantConst fillingArea = scheduleJson[fillingKey.c_str()];
     if (fillingArea.is<JsonObject>()) {
       bool globalEnabled = fillingArea["enabled"] | true;
+      Serial.printf("[sched-fill] globalEnabled=%d schedules isNull=%d\n",
+        (int)globalEnabled, (int)fillingArea["schedules"].as<JsonArrayConst>().isNull());
       if (globalEnabled) {
         JsonArrayConst schedules = fillingArea["schedules"].as<JsonArrayConst>();
         if (!schedules.isNull()) {
@@ -651,6 +655,7 @@ void checkSchedules() {
             for (JsonVariantConst d : days) {
               if (d.as<uint8_t>() == schedDow) { dayMatch = true; break; }
             }
+            Serial.printf("[sched-fill] si=%d dayMatch=%d\n", si, (int)dayMatch);
             if (!dayMatch) { si++; continue; }
 
             bool timeMatch = false;
@@ -664,6 +669,8 @@ void checkSchedules() {
               }
             }
             // Note: sunriseSchedule / sunsetSchedule not yet implemented.
+            Serial.printf("[sched-fill] si=%d timeMatch=%d dedup=%d\n",
+              si, (int)timeMatch, (int)(gLastFiredMin[2][si] == epochMin));
             if (!timeMatch) { si++; continue; }
 
             if (gLastFiredMin[2][si] == epochMin) { si++; continue; }
