@@ -634,15 +634,15 @@ void checkSchedules() {
   // Filling schedule block (no zones — just duration + startFilling)
   if (!isPaused(gPauseUntilFillingMs) && !isFillingActive()) {
     String fillingKey = resolveSchedKey("Filling");
+    JsonVariantConst fillingSection = scheduleJson[fillingKey.c_str()];
     Serial.printf("[sched-fill] key=%s hasObj=%d time=%02u:%02u dow=%u epochMin=%lu\n",
-      fillingKey.c_str(), (int)scheduleJson[fillingKey.c_str()].is<JsonObject>(), h, m, schedDow, (unsigned long)epochMin);
-    JsonVariantConst fillingArea = scheduleJson[fillingKey.c_str()];
-    if (fillingArea.is<JsonObject>()) {
-      bool globalEnabled = fillingArea["enabled"] | true;
+      fillingKey.c_str(), (int)fillingSection.is<JsonObject>(), h, m, schedDow, (unsigned long)epochMin);
+    if (fillingSection.is<JsonObject>()) {
+      bool globalEnabled = fillingSection["enabled"] | true;
       Serial.printf("[sched-fill] globalEnabled=%d schedules isNull=%d\n",
-        (int)globalEnabled, (int)fillingArea["schedules"].as<JsonArrayConst>().isNull());
+        (int)globalEnabled, (int)fillingSection["schedules"].as<JsonArrayConst>().isNull());
       if (globalEnabled) {
-        JsonArrayConst schedules = fillingArea["schedules"].as<JsonArrayConst>();
+        JsonArrayConst schedules = fillingSection["schedules"].as<JsonArrayConst>();
         if (!schedules.isNull()) {
           int si = 0;
           for (JsonVariantConst sched : schedules) {
