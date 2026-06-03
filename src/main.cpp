@@ -2,6 +2,7 @@
 #include "file_utils.h"
 #include "hw_config.h"
 #include "board_info.h"
+#include "schedule_cache.h"
 
 #define DEBUG_ETHERNET_WEBSERVER_PORT       Serial
 #define NTP_DBG_PORT                        Serial
@@ -324,7 +325,7 @@ void setup() {
   loadJsonFile(manualControlJson, "/config/manual_control.json");
 
   // Load schedule configuration
-  loadJsonFile(scheduleJson, "/config/schedule.json");
+  loadSchedule();
 
   // Set I2C pins
   Wire.setPins(I2C_SDA, I2C_SCL);

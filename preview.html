@@ -195,6 +195,7 @@ function toggle(checked, onChange) {
   if (onChange) inp.addEventListener('change', () => onChange(inp.checked));
   lbl.append(inp, h('span', { class: 'toggle-slider' })); return lbl;
 }
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
 function field(label, ...ctrls) { return h('div', { class: 'field' }, h('span', { style: 'flex:1' }, label), ...ctrls); }
 function numInput(v) { return h('input', { type: 'number', value: String(v), style: 'width:160px;padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }); }
 function textInput(v, t='text') { return h('input', { type: t, value: v, style: 'width:160px;padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }); }
@@ -287,8 +288,8 @@ function buildEmergencyBar() {
       h('span', { class: 'e-state-text', 'data-role': 'state' }, 'Off'),
       h('span', { class: 'e-remaining', 'data-role': 'total' }, '')
     );
-    const btn = h('button', { class: 'emergency-btn e-inactive', id: `ebtn-${a.id}`, title: a.id },
-      h('span', { class: 'e-title' }, a.id[0], ' ', h('span', { class: 'e-zones', id: `ezones-${a.id}` })),
+    const btn = h('button', { class: 'emergency-btn e-inactive', id: `ebtn-${a.id}`, title: capitalize(a.id) },
+      h('span', { class: 'e-title' }, capitalize(a.id)[0], ' ', h('span', { class: 'e-zones', id: `ezones-${a.id}` })),
       stateSpan,
       h('span', { class: 'e-action' }, '')
     );
@@ -724,7 +725,7 @@ function buildManualTab() {
     }
     renderPresets();
 
-    const cardHeader = h('div', { class: 'card-header', style: 'justify-content:flex-start;gap:0.5rem;flex-wrap:wrap;' }, h('h3', {}, area.id), startBtn, presetRow);
+    const cardHeader = h('div', { class: 'card-header', style: 'justify-content:flex-start;gap:0.5rem;flex-wrap:wrap;' }, h('h3', {}, capitalize(area.id)), startBtn, presetRow);
     presetRow.style.display = 'inline-flex';
     presetRow.style.flexWrap = 'wrap';
     presetRow.style.gap = '0.3rem';
@@ -832,7 +833,7 @@ function buildScheduleTab(area, idx) {
     h('span', { style: 'display:inline-flex;align-items:center;gap:0.25rem;' },
       'Suspend on rain above ', rainInput, ' L/m² ', toggle(sched.suspendOnRainEnabled, c => { rainInput.disabled = !c; })));
   const headerRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.4rem;' },
-    h('span', {}, `${area.id} Schedules enabled`),
+    h('span', {}, `${capitalize(area.id)} Schedules enabled`),
     toggle(sched.enabled, c => { schedContent.classList.toggle('content-disabled', !c); suspSpan.classList.toggle('field-disabled', !c); }),
     suspSpan);
 
@@ -965,7 +966,7 @@ function buildScheduleCard(sched, index, area, onstart) {
   }));
   const timeList = h('div', { class: 'time-list' },
     ...sched.startTimes.map(t => h('div', { class: 'time-row' },
-      h('input', { type: 'time', value: t, style: 'padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }),
+      h('input', { type: 'time', lang: 'en-GB', value: t, style: 'padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }),
       h('button', { class: 'btn btn-danger btn-sm' }, '✕'))),
     h('button', { class: 'btn btn-secondary btn-sm' }, '+ Add time'));
   const srOff = numInput(sched.sunriseSchedule.sunriseOffsetMinutes); srOff.style.width = '55px'; srOff.disabled = !sched.sunriseSchedule.enabled;
@@ -973,7 +974,7 @@ function buildScheduleCard(sched, index, area, onstart) {
   updateStartBtn();
   card.append(
     h('div', { class: 'card-header' },
-      h('div', { style: 'display:flex;align-items:center;gap:0.5rem;' }, h('h3', { style: 'margin:0;' }, `${area.id} Schedule ${index+1}`), enableToggle, startBtn),
+      h('div', { style: 'display:flex;align-items:center;gap:0.5rem;' }, h('h3', { style: 'margin:0;' }, `${capitalize(area.id)} Schedule ${index+1}`), enableToggle, startBtn),
       h('button', { class: 'btn btn-danger' }, 'Delete')),
     h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:flex-start;' }, h('span', {}, 'Zones in group'), zoneBox),
     h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;align-items:center;' }, h('span', {}, 'Sequence'), groupChipsBox),
@@ -1036,14 +1037,14 @@ function buildFillScheduleCard(sched, index) {
   function renderTimes() {
     timesBox.innerHTML = '';
     times.forEach((t, ti) => {
-      const inp = h('input', { type: 'time', value: t });
+      const inp = h('input', { type: 'time', lang: 'en-GB', value: t });
       const delBtn = h('button', { class: 'btn btn-danger btn-sm' }, '✕');
       delBtn.addEventListener('click', () => { times.splice(ti, 1); renderTimes(); });
       timesBox.append(h('div', { class: 'time-row' }, inp, delBtn));
     });
     timesBox.append(addTimeBtn);
   }
-  addTimeBtn.addEventListener('click', () => { times.push('08:00'); renderTimes(); });
+  addTimeBtn.addEventListener('click', () => { times.push('08:00'); times.sort(); renderTimes(); });
   renderTimes();
   const timesRow = h('div', { class: 'field', style: 'flex-wrap:wrap;gap:0.3rem;' },
     h('span', {}, 'Start Times'), timesBox);
@@ -1098,7 +1099,7 @@ function buildSettingsTab() {
       }),
       h('button', { class: 'btn btn-secondary btn-sm', style: 'margin-top:0.25rem;' }, '+ Add zone'));
     const descIn = textInput(area.description); descIn.style.flex = '1'; descIn.style.minWidth = '200px'; descIn.style.width = 'auto';
-    return sectionElToggle(area.id, area.enabled, c => { area.enabled = c; persistAppConfig(); location.reload(); },
+    return sectionElToggle(capitalize(area.id), area.enabled, c => { area.enabled = c; persistAppConfig(); location.reload(); },
       field('Description', descIn),
       field('Pump ID', numInput(area.pump_id)), field('Pump Start Delay (s)', numInput(area.pump_start_delay_seconds)),
       field('Main Valve ID', numInput(area.main_valve_id)),
@@ -1149,7 +1150,7 @@ function buildFirmwareTab() {
 // Navigation
 const tabDefs = [
   { id: 'manual', label: 'Manual Control', build: buildManualTab },
-  ...APP_CONFIG.areas.filter(a => a.enabled !== false).map((a, idx) => ({ id: a.id, label: a.id, color: AREA_COLORS[idx % AREA_COLORS.length], build: () => buildScheduleTab(a, idx) })),
+  ...APP_CONFIG.areas.filter(a => a.enabled !== false).map((a, idx) => ({ id: a.id, label: capitalize(a.id), color: AREA_COLORS[idx % AREA_COLORS.length], build: () => buildScheduleTab(a, idx) })),
   ...(APP_CONFIG.filling?.enabled !== false ? [{ id: 'fill_schedule', label: 'Fill Sched', color: '#fb923c', build: buildFillScheduleTab }] : []),
   { id: 'settings', label: 'Settings', build: buildSettingsTab },
   { id: 'firmware', label: 'Firmware', build: buildFirmwareTab }

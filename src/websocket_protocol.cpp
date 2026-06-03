@@ -6,6 +6,7 @@
 
 #include "main.h"
 #include "file_utils.h"
+#include "schedule_cache.h"
 #include "zones.h"
 
 namespace {
@@ -25,6 +26,8 @@ int8_t gDripScheduleActive  = -1;
 // Stores epoch-minute-within-week: dow*24*60 + hour*60 + minute.
 // Prevents re-firing the same schedule within the same minute.
 uint32_t gLastFiredMin[3][8] = {{0}};  // index 2 = Filling
+
+ParsedScheduleCache gSchedCache = {};
 
 // Per-area schedule auto-disarm: when a manual run starts via WS, the global
 // `[area].enabled` flag in schedule.json is set to false so a scheduled run
@@ -108,6 +111,14 @@ void writeScheduleGlobalEnabled(const char* areaId, bool value) {
   doc[key.c_str()]["enabled"] = value;
   // Also keep scheduleJson in RAM in sync.
   scheduleJson[key.c_str()]["enabled"] = value;
+  // Keep parsed cache in sync with runtime enabled toggle.
+  static const char* areaIds[] = {"grass", "drip", "filling"};
+  for (uint8_t i = 0; i < NUM_SCHED_AREAS; i++) {
+    if (strcmp(areaId, areaIds[i]) == 0) {
+      gSchedCache.areas[i].enabled = value;
+      break;
+    }
+  }
   File f = LittleFS.open("/config/schedule.json", "w");
   if (f) { serializeJson(doc, f); f.close(); }
 }
@@ -552,139 +563,67 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
 // websocketProtocolLoop. Relies on wall-clock time from getRtcTime().
 // Schedule JSON keys are lowercase ("grass", "drip", "filling").
 void checkSchedules() {
-  JsonObject schedRoot = scheduleJson.as<JsonObject>();
   uint8_t h, m, dow;
   if (!getRtcTime(h, m, dow)) return;
-  // dow: 0=Sun, 1=Mon…6=Sat. Schedule uses 1=Mon…7=Sun.
   uint8_t schedDow = (dow == 0) ? 7 : dow;
-  // Unique minute within the week; prevents re-firing the same schedule.
   uint32_t epochMin = (uint32_t)dow * 24 * 60 + h * 60 + m;
 
-  const char* areaIds[]    = {"grass", "drip"};
-  unsigned long* pauseRefs[] = {&gPauseUntilGrassMs, &gPauseUntilDripMs};
+  unsigned long* pauseRefs[] = {&gPauseUntilGrassMs, &gPauseUntilDripMs, &gPauseUntilFillingMs};
 
-  for (int8_t ai = 0; ai < 2; ai++) {
-    const char* areaId = areaIds[ai];
+  for (uint8_t ai = 0; ai < NUM_SCHED_AREAS; ai++) {
     if (isPaused(*pauseRefs[ai])) continue;
 
-    // Area must not already be running
-    bool running = (ai == 0) ? isGrassIrrigating() : isDripIrrigating();
-    if (running) continue;
+    if (ai == 0 && isGrassIrrigating()) continue;
+    if (ai == 1 && isDripIrrigating()) continue;
+    if (ai == 2 && isFillingActive()) continue;
 
-    String key = resolveSchedKey(areaId);
-    JsonVariant area = schedRoot[key.c_str()];
-    if (!area.is<JsonObject>()) continue;
+    const ParsedArea& pa = gSchedCache.areas[ai];
+    if (!pa.enabled) continue;
 
-    bool globalEnabled = area["enabled"] | true;
-    if (!globalEnabled) continue;
+    for (uint8_t si = 0; si < pa.scheduleCount; si++) {
+      const ParsedSchedule& ps = pa.schedules[si];
+      if (!ps.enabled) continue;
 
-    JsonArrayConst schedules = area["schedules"].as<JsonArrayConst>();
-    if (schedules.isNull()) continue;
+      if (!(ps.daysMask & (1 << schedDow))) continue;
 
-    int si = 0;
-    for (JsonVariantConst sched : schedules) {
-      if (si >= 8) break;
-      bool schedEnabled = sched["enabled"] | true;
-      if (!schedEnabled) { si++; continue; }
-
-      // Day-of-week check
-      bool dayMatch = false;
-      JsonArrayConst days = sched["daysOfWeek"].as<JsonArrayConst>();
-      for (JsonVariantConst d : days) {
-        if (d.as<uint8_t>() == schedDow) { dayMatch = true; break; }
-      }
-      if (!dayMatch) { si++; continue; }
-
-      // Fixed start-time check (HH:MM)
       bool timeMatch = false;
-      JsonArrayConst times = sched["startTimes"].as<JsonArrayConst>();
-      for (JsonVariantConst t : times) {
-        const char* ts = t.as<const char*>();
-        if (!ts) continue;
-        uint8_t th = 0, tm = 0;
-        if (sscanf(ts, "%hhu:%hhu", &th, &tm) == 2 && th == h && tm == m) {
-          timeMatch = true; break;
+      for (uint8_t ti = 0; ti < ps.startTimeCount; ti++) {
+        if (ps.startTimes[ti].hour == h && ps.startTimes[ti].minute == m) {
+          timeMatch = true;
+          break;
         }
       }
-      // Note: sunriseSchedule / sunsetSchedule not yet implemented.
+      if (!timeMatch) continue;
 
-      if (!timeMatch) { si++; continue; }
-
-      // Avoid re-firing the same (area, schedule, minute)
-      if (gLastFiredMin[ai][si] == epochMin) { si++; continue; }
-
-      // Build zone-group config from schedule entry
-      uint32_t durMin = sched["durationMinutes"] | 20;
-      ZoneRunConfig cfg = parseZoneGroups(sched["zones"], durMin * 60000UL);
-      if (cfg.count == 0) { si++; continue; }  // no zones — skip
+      if (gLastFiredMin[ai][si] == epochMin) continue;
 
       gLastFiredMin[ai][si] = epochMin;
-      if (ai == 0) {
-        Zones::setGrassZoneGroups(cfg);
-        gGrassScheduleActive = static_cast<int8_t>(si);
-        startGrassIrrigation();
-        Serial.printf("[schedule] Grass schedule %d fired at %02u:%02u\n", si, h, m);
-      } else {
-        Zones::setDripZoneGroups(cfg);
-        gDripScheduleActive = static_cast<int8_t>(si);
-        startDripIrrigation();
-        Serial.printf("[schedule] Drip schedule %d fired at %02u:%02u\n", si, h, m);
-      }
-      break;  // one schedule fires per area per check
-    }
-  }
 
-  // Filling schedule block (no zones — just duration + startFilling)
-  if (!isPaused(gPauseUntilFillingMs) && !isFillingActive()) {
-    String fillingKey = resolveSchedKey("filling");
-    JsonVariant fillingSection = schedRoot[fillingKey.c_str()];
-    if (fillingSection.is<JsonObject>()) {
-      bool globalEnabled = fillingSection["enabled"] | true;
-      if (globalEnabled) {
-        JsonArrayConst schedules = fillingSection["schedules"].as<JsonArrayConst>();
-        if (!schedules.isNull()) {
-          int si = 0;
-          for (JsonVariantConst sched : schedules) {
-            if (si >= 8) break;
-            bool schedEnabled = sched["enabled"] | true;
-            if (!schedEnabled) { si++; continue; }
+      if (ai < 2) {
+        uint32_t durMs = ps.durationMinutes * 60000UL;
+        ZoneRunConfig cfg = parseZoneGroups(ps.zonesRef, durMs);
+        if (cfg.count == 0) continue;
 
-            bool dayMatch = false;
-            JsonArrayConst days = sched["daysOfWeek"].as<JsonArrayConst>();
-            for (JsonVariantConst d : days) {
-              if (d.as<uint8_t>() == schedDow) { dayMatch = true; break; }
-            }
-            Serial.printf("[sched-fill] si=%d dayMatch=%d\n", si, (int)dayMatch);
-            if (!dayMatch) { si++; continue; }
-
-            bool timeMatch = false;
-            JsonArrayConst times = sched["startTimes"].as<JsonArrayConst>();
-            for (JsonVariantConst t : times) {
-              const char* ts = t.as<const char*>();
-              if (!ts) continue;
-              uint8_t th = 0, tm = 0;
-              if (sscanf(ts, "%hhu:%hhu", &th, &tm) == 2 && th == h && tm == m) {
-                timeMatch = true; break;
-              }
-            }
-            // Note: sunriseSchedule / sunsetSchedule not yet implemented.
-            Serial.printf("[sched-fill] si=%d timeMatch=%d dedup=%d\n",
-              si, (int)timeMatch, (int)(gLastFiredMin[2][si] == epochMin));
-            if (!timeMatch) { si++; continue; }
-
-            if (gLastFiredMin[2][si] == epochMin) { si++; continue; }
-
-            uint32_t durMin = sched["durationMinutes"] | 15;
-            gLastFiredMin[2][si] = epochMin;
-            fillingMaxMs = durMin * 60000UL;
-            gFillingScheduleActive  = true;
-            gFillingManuallyStarted = false;
-            startFilling();
-            Serial.printf("[schedule] Filling schedule %d fired at %02u:%02u\n", si, h, m);
-            break;
-          }
+        if (ai == 0) {
+          Zones::setGrassZoneGroups(cfg);
+          gGrassScheduleActive = static_cast<int8_t>(si);
+          startGrassIrrigation();
+        } else {
+          Zones::setDripZoneGroups(cfg);
+          gDripScheduleActive = static_cast<int8_t>(si);
+          startDripIrrigation();
         }
-      }
+        Serial.printf("[schedule] %s schedule %d fired at %02u:%02u\n",
+                       ai == 0 ? "Grass" : "Drip", si + 1, h, m);
+      } else if (ai == 2) {
+        fillingMaxMs = ps.durationMinutes * 60000UL;
+        gFillingScheduleActive  = true;
+        gFillingManuallyStarted = false;
+        startFilling();
+        Serial.printf("[schedule] Filling schedule %d fired at %02u:%02u\n", si + 1, h, m);
+      } else
+        Serial.println("Error: Unexpected area index!");
+      break;
     }
   }
 }
@@ -748,7 +687,9 @@ void handleMessage(AsyncWebSocketClient* client, const uint8_t* payload, size_t 
       sendConfigSaved(client, fileName, false, reqId, "write failed");
       return;
     }
-    if (fileName == "schedule.json") loadJsonFile(scheduleJson, "/config/schedule.json");
+    if (fileName == "schedule.json") {
+      loadSchedule();
+    }
     sendConfigSaved(client, fileName, true, reqId);
     return;
   }
@@ -762,6 +703,9 @@ void handleMessage(AsyncWebSocketClient* client, const uint8_t* payload, size_t 
     if (!resetConfigFromSample(fileName)) {
       sendConfigSaved(client, fileName, false, reqId, "sample not found");
       return;
+    }
+    if (fileName == "schedule.json") {
+      loadSchedule();
     }
     sendConfigSaved(client, fileName, true, reqId);
     return;
@@ -786,6 +730,74 @@ void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventTyp
 }
 
 }  // namespace
+void rebuildScheduleCache() {
+  memset(&gSchedCache, 0, sizeof(gSchedCache));
+  JsonObject root = scheduleJson.as<JsonObject>();
+
+  if (root.isNull()) {
+    Serial.print("Bad schedule.json file...Scheduling malfunction!");
+    return;
+  }
+  const char* areaIds[NUM_SCHED_AREAS] = {"grass", "drip", "filling"};
+
+  for (uint8_t ai = 0; ai < NUM_SCHED_AREAS; ai++) {
+    const char* areaId = areaIds[ai];
+    String capKey;
+    if (!root[areaId].is<JsonObject>()) {
+      Serial.printf("Bad area json for area id: %s \n", areaId);
+      continue;
+    }
+
+    JsonObject area = root[areaId];
+    ParsedArea& pa = gSchedCache.areas[ai];
+    pa.enabled = area["enabled"] | true;
+
+    JsonArrayConst schedules = area["schedules"].as<JsonArrayConst>();
+    if (schedules.isNull()) {
+      Serial.printf("Bad schedules json for area id: %s\n", areaId);
+      continue;
+    }
+
+    uint8_t si = 0;
+    for (JsonVariantConst sched : schedules) {
+      if (si >= MAX_SCHEDULES_PER_AREA) break;
+      ParsedSchedule& ps = pa.schedules[si];
+
+      ps.enabled = sched["enabled"] | false;
+      ps.durationMinutes = sched["durationMinutes"] |
+        (ai == 0 ? controllerConfig.grassMaxMinutes : ai == 1 ? controllerConfig.dripMaxMinutes : controllerConfig.fillingMaxMinutes);
+
+      ps.daysMask = 0;
+      JsonArrayConst days = sched["daysOfWeek"].as<JsonArrayConst>();
+      for (JsonVariantConst d : days) {
+        uint8_t dow = d.as<uint8_t>();
+        if (dow >= 1 && dow <= 7) ps.daysMask |= (1 << dow);
+      }
+
+      ps.startTimeCount = 0;
+      JsonArrayConst times = sched["startTimes"].as<JsonArrayConst>();
+      for (JsonVariantConst t : times) {
+        if (ps.startTimeCount >= MAX_START_TIMES) break;
+        const char* ts = t.as<const char*>();
+        if (!ts) continue;
+        uint8_t th = 0, tm = 0;
+        if (sscanf(ts, "%hhu:%hhu", &th, &tm) == 2) {
+          ps.startTimes[ps.startTimeCount++] = {th, tm};
+        }
+      }
+
+      ps.zonesRef = scheduleJson[areaId]["schedules"][si]["zones"];
+      si++;
+    }
+    pa.scheduleCount = si;
+    Serial.printf("%s schedules: %u\n", areaId, si);
+  }
+}
+
+void loadSchedule() {
+  loadJsonFile(scheduleJson, "/config/schedule.json");
+  rebuildScheduleCache();
+}
 
 void armAreaManualStart(const char* area) {
   if (strcmp(area, "grass") == 0) { gGrassScheduleActive = -1; disarmAreaSchedule("grass", gDisarmGrass); }

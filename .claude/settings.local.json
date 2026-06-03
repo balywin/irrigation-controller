@@ -33,5 +33,6 @@
       "Read(//Users/baa1sf3/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
       "Bash(npm --prefix ui run build)"
     ]
-  }
+  },
+  "outputStyle": "Explanatory"
 }

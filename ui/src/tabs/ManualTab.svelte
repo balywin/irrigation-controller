@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getConfig, saveConfig } from '../lib/api.js';
   import { ws, sendCommand } from '../lib/ws.svelte.js';
+  import { capitalize, normalizeGroups, shuffle } from '../lib/utils.js';
 
   const DELAY_PRESETS = ['0m', '1m', '5m', '10m', '20m', '30m', '1h', '2h'];
   const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90];
@@ -24,14 +25,6 @@
   let fillingRunning = $derived(ws.status?.filling?.running ?? false);
 
   // ac.zones is an array of groups; each group is an array of zone IDs that
-  // fire simultaneously. Cycle iterates through the outer array. Backwards
-  // compat: a flat array of IDs is migrated to one-element groups.
-  function normalizeGroups(zones) {
-    if (!Array.isArray(zones)) return [];
-    if (zones.length === 0) return [];
-    if (Array.isArray(zones[0])) return zones.map(g => g.map(Number));
-    return zones.map(z => [Number(z)]);
-  }
 
   let currentGroupIdxs = $state({});
 
@@ -258,13 +251,6 @@
     }
   }
 
-  function shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  }
 
   function groupKey(g) { return [...g].map(Number).sort((a, b) => a - b).join(','); }
 
@@ -511,7 +497,7 @@
       {@const fwGroupIdx = running ? (ws.status?.areas?.[area.id]?.activeGroupIndex ?? -1) : -1}
       <div class="card" class:content-disabled={!enabled} style={`--area-color:${AREA_COLORS[i % AREA_COLORS.length]};border-color:var(--area-color);border-width:2px;`}>
         <div class="card-header" style="justify-content:flex-start;gap:0.5rem;flex-wrap:wrap;">
-          <h3>{area.id}</h3>
+          <h3>{capitalize(area.id)}</h3>
           <button type="button" class="btn"
             style={`background:${btnBg};color:#fff;min-width:6rem;`}
             disabled={btnDisabled}
