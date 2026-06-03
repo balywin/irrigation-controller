@@ -9,6 +9,7 @@
   import FillScheduleTab from './tabs/FillScheduleTab.svelte';
   import SettingsTab from './tabs/SettingsTab.svelte';
   import FirmwareTab from './tabs/FirmwareTab.svelte';
+  import { capitalize, fmtTime, fmtRemaining } from './lib/utils.js';
 
   const AREA_COLORS = ['#16a34a', '#2563eb', '#d97706', '#7c3aed', '#dc2626'];
   const WS_CLASSES = { connected: 'ws-connected', reconnecting: 'ws-reconnecting', disconnected: 'ws-disconnected' };
@@ -97,12 +98,6 @@
     return s > 0 ? Math.max(1, Math.ceil(s / 60)) : 0;
   }
 
-  // "X min" when ≥ 60s remain, otherwise "X sec". Empty when 0/null.
-  function fmtRemaining(seconds) {
-    if (!seconds || seconds <= 0) return '';
-    if (seconds >= 60) return `${Math.ceil(seconds / 60)} min`;
-    return `${seconds} sec`;
-  }
   function totalRemainingLabel(target) {
     const o = targetObj(target);
     const st = eStateOf(target);
@@ -181,11 +176,6 @@
     return '#dc2626';
   }
 
-  function fmtTime(ms) {
-    if (!ms) return '';
-    return new Date(ms).toLocaleTimeString();
-  }
-
   function wsTooltip() {
     if (ws.state === 'connected') {
       if (ws.hasEverDisconnected && ws.lastConnectedAt) return `Reconnected at ${fmtTime(ws.lastConnectedAt)}.`;
@@ -246,10 +236,10 @@
           style={eStateOf(area.id) !== 'inactive' || ePending[area.id] ? `background:${areaColor(i)}` : ''}
           onclick={() => eClick(area.id)}
           disabled={eDisabled(area.id)}
-          title={area.id}
+          title={capitalize(area.id)}
         >
           <span class="e-title">
-            {area.id[0]}
+            {capitalize(area.id)[0]}
             {#if allGroups.length > 0}
               <span class="e-zones">
                 {#each allGroups as grp, gi}
@@ -297,7 +287,7 @@
         <button class:active={activeTab === area.id}
           style={`color:${areaColor(i)};${activeTab === area.id ? `border-bottom-color:${areaColor(i)};` : ''}`}
           onclick={() => activeTab = area.id}>
-          {area.id}
+          {capitalize(area.id)}
           {#if isScheduleActive(area.id)}
             <span class="status-dot" style="background:{areaColor(i)}"></span>
           {/if}

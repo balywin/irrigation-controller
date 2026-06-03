@@ -1,4 +1,6 @@
 <script>
+  import { normalizeGroups, toggleDay as _toggleDay, addTime as _addTime, removeTime as _removeTime } from '../lib/utils.js';
+
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90];
 
@@ -16,14 +18,6 @@
     schedule.zones.length === 0 ? 'No zones configured' :
     (!schedule.durationMinutes || schedule.durationMinutes <= 0) ? 'Duration must be > 0' : ''
   );
-
-  // Same zone-groups model as Manual tab. Each group fires simultaneously;
-  // cycle iterates through groups in order. Flat array migrated to one-zone groups.
-  function normalizeGroups(zones) {
-    if (!Array.isArray(zones) || zones.length === 0) return [];
-    if (Array.isArray(zones[0])) return zones.map(g => g.map(Number));
-    return zones.map(z => [Number(z)]);
-  }
 
   let groups = $state(normalizeGroups(schedule.zones));
   let currentGroupIdx = $state(0);
@@ -84,21 +78,9 @@
   }
   function onChipDragEnd() { dragSrc = null; }
 
-  function toggleDay(day, checked) {
-    if (checked) {
-      schedule.daysOfWeek = [...schedule.daysOfWeek, day].sort((a, b) => a - b);
-    } else {
-      schedule.daysOfWeek = schedule.daysOfWeek.filter(d => d !== day);
-    }
-  }
-
-  function addTime() {
-    schedule.startTimes = [...schedule.startTimes, '08:00'];
-  }
-
-  function removeTime(ti) {
-    schedule.startTimes = schedule.startTimes.filter((_, idx) => idx !== ti);
-  }
+  function toggleDay(day, checked) { schedule.daysOfWeek = _toggleDay(schedule.daysOfWeek, day, checked); }
+  function addTime() { schedule.startTimes = _addTime(schedule.startTimes); }
+  function removeTime(ti) { schedule.startTimes = _removeTime(schedule.startTimes, ti); }
 </script>
 
 <div class="card" style:opacity={schedule.enabled ? 1 : 0.65}>
@@ -194,6 +176,7 @@
           <input
             id="time-{type}-{index}-{ti}"
             type="time"
+            lang="en-GB"
             bind:value={schedule.startTimes[ti]}
           />
           <button type="button" class="btn btn-danger btn-sm" onclick={() => removeTime(ti)}>✕</button>

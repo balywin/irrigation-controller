@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getConfig, saveConfig } from '../lib/api.js';
   import { ws, sendCommand } from '../lib/ws.svelte.js';
+  import { capitalize, sortTimes } from '../lib/utils.js';
   import ScheduleCard from './ScheduleCard.svelte';
 
   let { area, color = '#2563eb' } = $props();
@@ -85,6 +86,7 @@
   async function save() {
     saving = true; saveMsg = ''; saveError = '';
     try {
+      schedules.forEach(s => { s.startTimes = sortTimes(s.startTimes); });
       const payload = {
         ...(fullScheduleRaw ?? {}),
         [area.id]: { enabled: sectionEnabled, suspendAboveTempEnabled, suspendAboveTemp, suspendOnRainEnabled, suspendOnRainAbove, schedules },
@@ -102,7 +104,7 @@
 {:else}
 <div style="--area-color:{color};">
   <div class="field" style="flex-wrap:wrap;gap:0.4rem;">
-    <span>{area.id} Schedules enabled</span>
+    <span>{capitalize(area.id)} Schedules enabled</span>
     <label class="toggle">
       <input type="checkbox" bind:checked={sectionEnabled} />
       <span class="toggle-slider"></span>

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getConfig, saveConfig } from '../lib/api.js';
   import { ws } from '../lib/ws.svelte.js';
+  import { sortTimes } from '../lib/utils.js';
   import FillScheduleCard from './FillScheduleCard.svelte';
 
   let fullScheduleRaw = null;
@@ -68,6 +69,7 @@
   async function save() {
     saving = true; saveMsg = ''; saveError = '';
     try {
+      schedules.forEach(s => { s.startTimes = sortTimes(s.startTimes); });
       const payload = {
         ...(fullScheduleRaw ?? {}),
         filling: { enabled: sectionEnabled, schedules },

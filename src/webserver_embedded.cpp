@@ -10,6 +10,7 @@
 #include "fallback_page.h"
 #include "main.h"
 #include "file_utils.h"
+#include "schedule_cache.h"
 
 // Call from your setup():
 //   LittleFS.begin();
@@ -136,7 +137,7 @@ void setupEmbeddedWebServer(AsyncWebServer &server) {
       if (f) { f.write(data, len); f.close(); }
     }
     if (index + len >= total && name == "schedule.json") {
-      loadJsonFile(scheduleJson, "/config/schedule.json");
+      loadSchedule();
     }
   });
 
