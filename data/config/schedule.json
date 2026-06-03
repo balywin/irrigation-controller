@@ -1,4 +1,25 @@
 {
+    "filling": {
+        "enabled": false,
+        "schedules": [
+            {
+                "enabled": true,
+                "durationMinutes": 15,
+                "startTimes": [
+                    "06:30"
+                ],
+                "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+                "sunriseSchedule": {
+                    "enabled": false,
+                    "sunriseOffsetMinutes": 0
+                },
+                "sunsetSchedule": {
+                    "enabled": false,
+                    "sunsetOffsetMinutes": 0
+                }
+            }
+        ]
+    },
     "grass": {
         "enabled": true,
         "suspendAboveTempEnabled": true,
