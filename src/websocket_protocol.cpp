@@ -48,9 +48,13 @@ bool gPrevRunningFilling = false;
 
 const char* DISARM_FILE = "/config/disarm.json";
 
-// Resolve schedule.json key for an area (lowercase canonical form).
+// Resolve schedule.json key: try lowercase first, then capitalized (legacy).
 String resolveSchedKey(const char* areaId) {
-  if (scheduleJson[areaId].is<JsonObject>()) return {areaId};
+  JsonObject root = scheduleJson.as<JsonObject>();
+  if (root[areaId].is<JsonObject>()) return {areaId};
+  String cap = String(areaId);
+  cap[0] = toupper(cap[0]);
+  if (root[cap.c_str()].is<JsonObject>()) return cap;
   return {areaId};
 }
 
@@ -111,8 +115,9 @@ void writeScheduleGlobalEnabled(const char* areaId, bool value) {
 void disarmAreaSchedule(const char* areaId, SchedDisarmState& st) {
   if (st.armed) return;
   String key = resolveSchedKey(areaId);
-  if (scheduleJson[key.c_str()].is<JsonObject>()) {
-    st.original = scheduleJson[key.c_str()]["enabled"] | true;
+  JsonObject schedRoot = scheduleJson.as<JsonObject>();
+  if (schedRoot[key.c_str()].is<JsonObject>()) {
+    st.original = schedRoot[key.c_str()]["enabled"] | true;
   } else {
     st.original = true;
   }
@@ -373,7 +378,8 @@ void sendConfigSaved(AsyncWebSocketClient* client, const String& fileName, bool 
 bool fireSchedule(int8_t areaIdx, int8_t schedIdx, String& outCode, String& outMsg) {
   const char* areaId = (areaIdx == 0) ? "grass" : "drip";
   String key = resolveSchedKey(areaId);
-  JsonVariantConst areaNode = scheduleJson[key.c_str()];
+  JsonObject schedObj = scheduleJson.as<JsonObject>();
+  JsonVariant areaNode = schedObj[key.c_str()];
   if (!areaNode.is<JsonObject>()) {
     outCode = "bad_request"; outMsg = "area not in schedule.json"; return false;
   }
@@ -546,6 +552,7 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
 // websocketProtocolLoop. Relies on wall-clock time from getRtcTime().
 // Schedule JSON keys are lowercase ("grass", "drip", "filling").
 void checkSchedules() {
+  JsonObject schedRoot = scheduleJson.as<JsonObject>();
   uint8_t h, m, dow;
   if (!getRtcTime(h, m, dow)) return;
   // dow: 0=Sun, 1=Mon…6=Sat. Schedule uses 1=Mon…7=Sun.
@@ -565,7 +572,7 @@ void checkSchedules() {
     if (running) continue;
 
     String key = resolveSchedKey(areaId);
-    JsonVariantConst area = scheduleJson[key.c_str()];
+    JsonVariant area = schedRoot[key.c_str()];
     if (!area.is<JsonObject>()) continue;
 
     bool globalEnabled = area["enabled"] | true;
@@ -629,14 +636,10 @@ void checkSchedules() {
 
   // Filling schedule block (no zones — just duration + startFilling)
   if (!isPaused(gPauseUntilFillingMs) && !isFillingActive()) {
-    const char* fillingKey = "filling";
-    JsonVariantConst fillingSection = scheduleJson[fillingKey];
-    Serial.printf("[sched-fill] key=%s hasObj=%d time=%02u:%02u dow=%u epochMin=%lu\n",
-      fillingKey, (int)fillingSection.is<JsonObject>(), h, m, schedDow, (unsigned long)epochMin);
+    String fillingKey = resolveSchedKey("filling");
+    JsonVariant fillingSection = schedRoot[fillingKey.c_str()];
     if (fillingSection.is<JsonObject>()) {
       bool globalEnabled = fillingSection["enabled"] | true;
-      Serial.printf("[sched-fill] globalEnabled=%d schedules isNull=%d\n",
-        (int)globalEnabled, (int)fillingSection["schedules"].as<JsonArrayConst>().isNull());
       if (globalEnabled) {
         JsonArrayConst schedules = fillingSection["schedules"].as<JsonArrayConst>();
         if (!schedules.isNull()) {

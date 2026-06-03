@@ -31,6 +31,5 @@ bool loadJsonFile(JsonDocument& doc, String fileName) {
   file.close();
 
   Serial.println(fileName + " loaded from the file system.");
-
   return true;
 }
