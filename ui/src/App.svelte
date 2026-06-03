@@ -119,7 +119,7 @@
   function eClick(target) {
     if (ePending[target]) return;
     const st = eStateOf(target);
-    const commandTarget = target === 'filling' ? 'Filling' : target;
+    const commandTarget = target;
     if (st === 'active') {
       if (isManualSource(target)) {
         setEPending(target, 'stop');

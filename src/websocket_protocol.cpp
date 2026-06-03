@@ -48,13 +48,9 @@ bool gPrevRunningFilling = false;
 
 const char* DISARM_FILE = "/config/disarm.json";
 
-// Resolve schedule.json key for an area: try exact (e.g. "Grass"), then lower
-// ("grass"). Returns the key that actually exists, or the original on miss.
+// Resolve schedule.json key for an area (lowercase canonical form).
 String resolveSchedKey(const char* areaId) {
   if (scheduleJson[areaId].is<JsonObject>()) return {areaId};
-  String low = String(areaId);
-  low.toLowerCase();
-  if (scheduleJson[low.c_str()].is<JsonObject>()) return low;
   return {areaId};
 }
 
@@ -99,7 +95,7 @@ void clearDisarmStash(const char* areaId) {
 }
 
 // Set only [areaId].enabled in schedule.json; all other fields preserved.
-// Uses case-insensitive key lookup so both "Grass" and "grass" work.
+// Uses lowercase keys in schedule.json.
 void writeScheduleGlobalEnabled(const char* areaId, bool value) {
   JsonDocument doc;
   if (!loadJsonFile(doc, "/config/schedule.json")) return;
@@ -172,27 +168,27 @@ unsigned long* pauseSlotByTarget(const String& target) {
 String normalizeAreaTarget(const String& target) {
   String t = target;
   t.toLowerCase();
-  if (t == "grass") return "Grass";
-  if (t == "drip") return "Drip";
-  if (t == "filling") return "Filling";
+  if (t == "grass") return "grass";
+  if (t == "drip") return "drip";
+  if (t == "filling") return "filling";
   return "";
 }
 
 bool isAreaRunning(const String& area) {
-  if (area == "Grass") return isGrassIrrigating();
-  if (area == "Drip") return isDripIrrigating();
+  if (area == "grass") return isGrassIrrigating();
+  if (area == "drip") return isDripIrrigating();
   return false;
 }
 
 bool isAreaManuallyStarted(const String& area) {
-  if (area == "Grass") return isGrassIrrigating() && gDisarmGrass.armed;
-  if (area == "Drip")  return isDripIrrigating()  && gDisarmDrip.armed;
+  if (area == "grass") return isGrassIrrigating() && gDisarmGrass.armed;
+  if (area == "drip")  return isDripIrrigating()  && gDisarmDrip.armed;
   return false;
 }
 
 int8_t areaScheduleIndex(const String& area) {
-  if (area == "Grass") return isGrassIrrigating() ? gGrassScheduleActive : -1;
-  if (area == "Drip")  return isDripIrrigating()  ? gDripScheduleActive  : -1;
+  if (area == "grass") return isGrassIrrigating() ? gGrassScheduleActive : -1;
+  if (area == "drip")  return isDripIrrigating()  ? gDripScheduleActive  : -1;
   return -1;
 }
 
@@ -213,10 +209,10 @@ String buildStatusJson() {
 
   JsonObject areas = data["areas"].to<JsonObject>();
   const ZoneRunConfig& gr = Zones::getGrassRunConfig();
-  JsonObject grass = areas["Grass"].to<JsonObject>();
+  JsonObject grass = areas["grass"].to<JsonObject>();
   grass["running"]         = isGrassIrrigating();
-  grass["manuallyStarted"] = isAreaManuallyStarted("Grass");
-  grass["scheduleActive"]  = areaScheduleIndex("Grass");
+  grass["manuallyStarted"] = isAreaManuallyStarted("grass");
+  grass["scheduleActive"]  = areaScheduleIndex("grass");
   grass["pausedUntil"]     = isPaused(gPauseUntilGrassMs) ? makeIso8601FromNow(gPauseUntilGrassMs) : String();
   if (!isPaused(gPauseUntilGrassMs)) grass["pausedUntil"] = nullptr;
   grass["activeGroupIndex"]     = isGrassIrrigating() ? static_cast<int>(gr.activeIdx) : -1;
@@ -235,10 +231,10 @@ String buildStatusJson() {
   }
 
   const ZoneRunConfig& dr = Zones::getDripRunConfig();
-  JsonObject drip = areas["Drip"].to<JsonObject>();
+  JsonObject drip = areas["drip"].to<JsonObject>();
   drip["running"]         = isDripIrrigating();
-  drip["manuallyStarted"] = isAreaManuallyStarted("Drip");
-  drip["scheduleActive"]  = areaScheduleIndex("Drip");
+  drip["manuallyStarted"] = isAreaManuallyStarted("drip");
+  drip["scheduleActive"]  = areaScheduleIndex("drip");
   drip["pausedUntil"]     = isPaused(gPauseUntilDripMs) ? makeIso8601FromNow(gPauseUntilDripMs) : String();
   if (!isPaused(gPauseUntilDripMs)) drip["pausedUntil"] = nullptr;
   drip["activeGroupIndex"]      = isDripIrrigating() ? static_cast<int>(dr.activeIdx) : -1;
@@ -375,7 +371,7 @@ void sendConfigSaved(AsyncWebSocketClient* client, const String& fileName, bool 
 // Fire a specific schedule entry immediately, bypassing time/day checks.
 // Does not update gLastFiredMin so the time-triggered run still fires at the configured time.
 bool fireSchedule(int8_t areaIdx, int8_t schedIdx, String& outCode, String& outMsg) {
-  const char* areaId = (areaIdx == 0) ? "Grass" : "Drip";
+  const char* areaId = (areaIdx == 0) ? "grass" : "drip";
   String key = resolveSchedKey(areaId);
   JsonVariantConst areaNode = scheduleJson[key.c_str()];
   if (!areaNode.is<JsonObject>()) {
@@ -430,30 +426,30 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
       return false;
     }
     uint32_t durMin = extras["durationMinutes"] | 0;
-    if (norm == "Grass") {
+    if (norm == "grass") {
       uint32_t gMs = durMin > 0 ? durMin * 60000UL : controllerConfig.grassMaxMinutes * 60000UL;
       ZoneRunConfig cfg = parseZoneGroups(extras["zones"], gMs);
       Zones::setGrassZoneGroups(cfg);
       gGrassScheduleActive = -1;
-      disarmAreaSchedule("Grass", gDisarmGrass);
+      disarmAreaSchedule("grass", gDisarmGrass);
       startGrassIrrigation();
-    } else if (norm == "Drip") {
+    } else if (norm == "drip") {
       uint32_t gMs = durMin > 0 ? durMin * 60000UL : controllerConfig.dripMaxMinutes * 60000UL;
       ZoneRunConfig cfg = parseZoneGroups(extras["zones"], gMs);
       Zones::setDripZoneGroups(cfg);
       gDripScheduleActive = -1;
-      disarmAreaSchedule("Drip", gDisarmDrip);
+      disarmAreaSchedule("drip", gDisarmDrip);
       startDripIrrigation();
     } else {
       if (durMin > 0) fillingMaxMs = durMin * 60000UL;
       else fillingMaxMs = controllerConfig.fillingMaxMinutes * 60000UL;
       gFillingManuallyStarted = true;
       gFillingScheduleActive  = false;
-      disarmAreaSchedule("Filling", gDisarmFilling);
+      disarmAreaSchedule("filling", gDisarmFilling);
       startFilling();
       if (!isFillingActive()) {
         gFillingManuallyStarted = false;
-        restoreAreaSchedule("Filling", gDisarmFilling);
+        restoreAreaSchedule("filling", gDisarmFilling);
         outCode = "conflict"; outMsg = "Tank full"; return false;
       }
     }
@@ -462,33 +458,33 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
 
   if (action == "stop") {
     *pauseRef = 0;
-    if (norm == "Grass") { stopGrassIrrigation(); restoreAreaSchedule("Grass", gDisarmGrass); gGrassScheduleActive = -1; }
-    else if (norm == "Drip") { stopDripIrrigation(); restoreAreaSchedule("Drip", gDisarmDrip); gDripScheduleActive = -1; }
+    if (norm == "grass") { stopGrassIrrigation(); restoreAreaSchedule("grass", gDisarmGrass); gGrassScheduleActive = -1; }
+    else if (norm == "drip") { stopDripIrrigation(); restoreAreaSchedule("drip", gDisarmDrip); gDripScheduleActive = -1; }
     else {
       stopFilling();
       gFillingManuallyStarted = false;
       gFillingScheduleActive  = false;
-      restoreAreaSchedule("Filling", gDisarmFilling);
+      restoreAreaSchedule("filling", gDisarmFilling);
     }
     return true;
   }
 
   if (action == "pause_1h") {
     *pauseRef = millis() + PAUSE_1H_MS;
-    if (norm == "Grass") { stopGrassIrrigation(); restoreAreaSchedule("Grass", gDisarmGrass); gGrassScheduleActive = -1; }
-    else if (norm == "Drip") { stopDripIrrigation(); restoreAreaSchedule("Drip", gDisarmDrip); gDripScheduleActive = -1; }
+    if (norm == "grass") { stopGrassIrrigation(); restoreAreaSchedule("grass", gDisarmGrass); gGrassScheduleActive = -1; }
+    else if (norm == "drip") { stopDripIrrigation(); restoreAreaSchedule("drip", gDisarmDrip); gDripScheduleActive = -1; }
     else {
       stopFilling();
       gFillingManuallyStarted = false;
       gFillingScheduleActive  = false;
-      restoreAreaSchedule("Filling", gDisarmFilling);
+      restoreAreaSchedule("filling", gDisarmFilling);
     }
     return true;
   }
 
   if (action == "run_schedule") {
-    if (norm == "Filling") {
-      outCode = "bad_request"; outMsg = "run_schedule not supported for Filling"; return false;
+    if (norm == "filling") {
+      outCode = "bad_request"; outMsg = "run_schedule not supported for filling"; return false;
     }
     if (isPaused(*pauseRef)) {
       outCode = "conflict"; outMsg = "target is paused"; return false;
@@ -500,13 +496,13 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     if (si < 0 || si >= 8) {
       outCode = "bad_request"; outMsg = "scheduleIndex missing or out of range"; return false;
     }
-    return fireSchedule((norm == "Grass") ? 0 : 1, si, outCode, outMsg);
+    return fireSchedule((norm == "grass") ? 0 : 1, si, outCode, outMsg);
   }
 
   if (action == "set_group") {
     int gi = extras["groupIndex"] | -1;
-    if (norm == "Grass") {
-      if (!isGrassIrrigating()) { outCode = "conflict"; outMsg = "Grass not running"; return false; }
+    if (norm == "grass") {
+      if (!isGrassIrrigating()) { outCode = "conflict"; outMsg = "grass not running"; return false; }
       if (gi < 0 || gi >= (int)Zones::getGrassRunConfig().count) { outCode = "bad_request"; outMsg = "groupIndex out of range"; return false; }
       if (!extras["zones"].isNull()) {
         ZoneRunConfig cfg = Zones::getGrassRunConfig();
@@ -520,8 +516,8 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
         Zones::setGrassZoneGroups(cfg);
       }
       switchGrassGroup((uint8_t)gi);
-    } else if (norm == "Drip") {
-      if (!isDripIrrigating()) { outCode = "conflict"; outMsg = "Drip not running"; return false; }
+    } else if (norm == "drip") {
+      if (!isDripIrrigating()) { outCode = "conflict"; outMsg = "drip not running"; return false; }
       if (gi < 0 || gi >= (int)Zones::getDripRunConfig().count) { outCode = "bad_request"; outMsg = "groupIndex out of range"; return false; }
       if (!extras["zones"].isNull()) {
         ZoneRunConfig cfg = Zones::getDripRunConfig();
@@ -548,7 +544,7 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
 
 // Check and fire scheduled irrigation runs. Called once per second from
 // websocketProtocolLoop. Relies on wall-clock time from getRtcTime().
-// Schedule JSON keys may be capitalized ("Grass") or lowercase ("grass").
+// Schedule JSON keys are lowercase ("grass", "drip", "filling").
 void checkSchedules() {
   uint8_t h, m, dow;
   if (!getRtcTime(h, m, dow)) return;
@@ -557,7 +553,7 @@ void checkSchedules() {
   // Unique minute within the week; prevents re-firing the same schedule.
   uint32_t epochMin = (uint32_t)dow * 24 * 60 + h * 60 + m;
 
-  const char* areaIds[]    = {"Grass", "Drip"};
+  const char* areaIds[]    = {"grass", "drip"};
   unsigned long* pauseRefs[] = {&gPauseUntilGrassMs, &gPauseUntilDripMs};
 
   for (int8_t ai = 0; ai < 2; ai++) {
@@ -633,10 +629,10 @@ void checkSchedules() {
 
   // Filling schedule block (no zones — just duration + startFilling)
   if (!isPaused(gPauseUntilFillingMs) && !isFillingActive()) {
-    String fillingKey = resolveSchedKey("Filling");
-    JsonVariantConst fillingSection = scheduleJson[fillingKey.c_str()];
+    const char* fillingKey = "filling";
+    JsonVariantConst fillingSection = scheduleJson[fillingKey];
     Serial.printf("[sched-fill] key=%s hasObj=%d time=%02u:%02u dow=%u epochMin=%lu\n",
-      fillingKey.c_str(), (int)fillingSection.is<JsonObject>(), h, m, schedDow, (unsigned long)epochMin);
+      fillingKey, (int)fillingSection.is<JsonObject>(), h, m, schedDow, (unsigned long)epochMin);
     if (fillingSection.is<JsonObject>()) {
       bool globalEnabled = fillingSection["enabled"] | true;
       Serial.printf("[sched-fill] globalEnabled=%d schedules isNull=%d\n",
@@ -789,13 +785,13 @@ void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventTyp
 }  // namespace
 
 void armAreaManualStart(const char* area) {
-  if (strcmp(area, "Grass") == 0) { gGrassScheduleActive = -1; disarmAreaSchedule("Grass", gDisarmGrass); }
-  else if (strcmp(area, "Drip") == 0) { gDripScheduleActive = -1; disarmAreaSchedule("Drip", gDisarmDrip); }
+  if (strcmp(area, "grass") == 0) { gGrassScheduleActive = -1; disarmAreaSchedule("grass", gDisarmGrass); }
+  else if (strcmp(area, "drip") == 0) { gDripScheduleActive = -1; disarmAreaSchedule("drip", gDisarmDrip); }
 }
 
 void restoreAreaManualStop(const char* area) {
-  if (strcmp(area, "Grass") == 0) { restoreAreaSchedule("Grass", gDisarmGrass); gGrassScheduleActive = -1; }
-  else if (strcmp(area, "Drip") == 0) { restoreAreaSchedule("Drip", gDisarmDrip); gDripScheduleActive = -1; }
+  if (strcmp(area, "grass") == 0) { restoreAreaSchedule("grass", gDisarmGrass); gGrassScheduleActive = -1; }
+  else if (strcmp(area, "drip") == 0) { restoreAreaSchedule("drip", gDisarmDrip); gDripScheduleActive = -1; }
 }
 
 void websocketNotifyHardwareCommand(const char* action, const char* target, int zone) {
@@ -829,21 +825,21 @@ void websocketProtocolLoop() {
   // and restore schedule.enabled + clear schedule-active flag.
   bool curG = isGrassIrrigating();
   if (gPrevRunningGrass && !curG) {
-    restoreAreaSchedule("Grass", gDisarmGrass);
+    restoreAreaSchedule("grass", gDisarmGrass);
     gGrassScheduleActive = -1;
   }
   gPrevRunningGrass = curG;
 
   bool curD = isDripIrrigating();
   if (gPrevRunningDrip && !curD) {
-    restoreAreaSchedule("Drip", gDisarmDrip);
+    restoreAreaSchedule("drip", gDisarmDrip);
     gDripScheduleActive = -1;
   }
   gPrevRunningDrip = curD;
 
   bool curF = isFillingActive();
   if (gPrevRunningFilling && !curF) {
-    restoreAreaSchedule("Filling", gDisarmFilling);
+    restoreAreaSchedule("filling", gDisarmFilling);
     gFillingScheduleActive  = false;
     gFillingManuallyStarted = false;
   }

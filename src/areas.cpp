@@ -82,7 +82,7 @@ const char* getZoneName(AreaConfig* area, uint8_t zoneIdx) {
 }
 
 void configureAreaZones(const char* areaId, AreaConfig* areas, uint8_t areaCount) {
-  bool isGrass = strcmp(areaId, "Grass") == 0;
+  bool isGrass = strcmp(areaId, "grass") == 0;
   AreaConfig* area = findAreaById(areaId, areas, areaCount);
   if (area && area->enabled && area->num_zones > 0) {
     ZoneRunConfig zonesCfg = {};

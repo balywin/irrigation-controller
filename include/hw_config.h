@@ -1,6 +1,6 @@
 #pragma once
 
-#define DEV_BOARD_OLED
+//#define DEV_BOARD_OLED
 //#define PRESSURE_SENSOR
 
 #define OLED_SSD1306

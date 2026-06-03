@@ -135,8 +135,8 @@ const APP_CONFIG_DEFAULT = {
   device_name: "ESP32-Irrigator", wifi_ssid: "", wifi_password: "",
   filling: { enabled: true, max_minutes: 16, pump_id: 3, level_filtering_seconds: 10, leakage_detector_threshold: 3, high_level_pressure: 120000, low_level_pressure: -200000 },
   areas: [
-    { id: "Grass", enabled: true, description: "Irrigation for grass areas", pump_id: 1, pump_start_delay_seconds: 6, main_valve_id: 1, zone_ids: [1,2,3,4,5], zone_names: ["Left","Mid-left","Mid-right","Right","Parking"], max_minutes: 20 },
-    { id: "Drip", enabled: false, description: "Irrigation for drip areas", pump_id: 2, pump_start_delay_seconds: 6, main_valve_id: 2, zone_ids: [6,7,8,9], zone_names: ["Trees","Flowers","Tomatoes","Herbs"], max_minutes: 480 }
+    { id: "grass", enabled: true, description: "Irrigation for grass areas", pump_id: 1, pump_start_delay_seconds: 6, main_valve_id: 1, zone_ids: [1,2,3,4,5], zone_names: ["Left","Mid-left","Mid-right","Right","Parking"], max_minutes: 20 },
+    { id: "drip", enabled: false, description: "Irrigation for drip areas", pump_id: 2, pump_start_delay_seconds: 6, main_valve_id: 2, zone_ids: [6,7,8,9], zone_names: ["Trees","Flowers","Tomatoes","Herbs"], max_minutes: 480 }
   ]
 };
 const APP_CONFIG = (() => {
@@ -145,24 +145,24 @@ const APP_CONFIG = (() => {
 })();
 function persistAppConfig() { try { localStorage.setItem('previewAppConfig', JSON.stringify(APP_CONFIG)); } catch {} }
 const SCHEDULE_CONFIG = {
-  Filling: { enabled: true, schedules: [
+  filling: { enabled: true, schedules: [
     { enabled: true, durationMinutes: 15, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } }
   ]},
-  Grass: { enabled: true, suspendAboveTempEnabled: true, suspendAboveTemp: 34, suspendOnRainEnabled: true, suspendOnRainAbove: 2, schedules: [
+  grass: { enabled: true, suspendAboveTempEnabled: true, suspendAboveTemp: 34, suspendOnRainEnabled: true, suspendOnRainAbove: 2, schedules: [
     { enabled: true, zones: [[1],[2]], durationMinutes: 30, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } },
     { enabled: true, zones: [[3,4]], durationMinutes: 30, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: true, sunriseOffsetMinutes: 10 }, sunsetSchedule: { enabled: true, sunsetOffsetMinutes: 10 } }
   ]},
-  Drip: { enabled: true, suspendAboveTempEnabled: false, suspendAboveTemp: 36, suspendOnRainEnabled: false, suspendOnRainAbove: 5, schedules: [
+  drip: { enabled: true, suspendAboveTempEnabled: false, suspendAboveTemp: 36, suspendOnRainEnabled: false, suspendOnRainAbove: 5, schedules: [
     { enabled: true, zones: [[7],[9]], durationMinutes: 60, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: false, sunriseOffsetMinutes: 0 }, sunsetSchedule: { enabled: false, sunsetOffsetMinutes: 0 } },
     { enabled: true, zones: [[6,8]], durationMinutes: 90, daysOfWeek: [1,2,3,4,5,6,7], startTimes: ["07:00","19:00"], sunriseSchedule: { enabled: true, sunriseOffsetMinutes: 10 }, sunsetSchedule: { enabled: true, sunsetOffsetMinutes: 10 } }
   ]}
 };
 const MANUAL_CONFIG = {
-  Grass: { zones: [3,4], shuffle: true, durationMinutes: 20, delayedStart: "0m", presets: [
+  grass: { zones: [3,4], shuffle: true, durationMinutes: 20, delayedStart: "0m", presets: [
     { name: "Morning quick", zones: [1,2], shuffle: false, durationMinutes: 10, delayedStart: "0m" },
     { name: "Evening full",  zones: [1,2,3,4,5], shuffle: true, durationMinutes: 30, delayedStart: "1h" }
   ]},
-  Drip:  { zones: [], shuffle: true, durationMinutes: 60, delayedStart: "0m", presets: [] }
+  drip:  { zones: [], shuffle: true, durationMinutes: 60, delayedStart: "0m", presets: [] }
 };
 
 const AREA_COLORS = ['#16a34a', '#2563eb', '#d97706', '#7c3aed', '#dc2626'];
@@ -212,12 +212,12 @@ function sectionElToggle(title, enabled, onToggle, ...rows) {
 }
 
 // Emergency bar
-const MOCK_ACTIVE_ZONES = { Grass: [1, 2], Drip: [7, 9] };
+const MOCK_ACTIVE_ZONES = { grass: [1, 2], drip: [7, 9] };
 // All zone groups as display strings (mirrors manualZones in the Svelte app).
-const MOCK_ZONE_GROUPS = { Grass: ['1', '2', '34', '5'], Drip: ['79', '6', '8'] };
-const MOCK_ACTIVE_GROUP_IDX = { Grass: 0, Drip: 1 };
-const MOCK_REMAINING = { Grass: 935, Drip: 2640, filling: 245 }; // seconds
-const MOCK_GROUP_REMAINING = { Grass: 47, Drip: 0 }; // seconds
+const MOCK_ZONE_GROUPS = { grass: ['1', '2', '34', '5'], drip: ['79', '6', '8'] };
+const MOCK_ACTIVE_GROUP_IDX = { grass: 0, drip: 1 };
+const MOCK_REMAINING = { grass: 935, drip: 2640, filling: 245 }; // seconds
+const MOCK_GROUP_REMAINING = { grass: 47, drip: 0 }; // seconds
 function fmtRemaining(seconds) {
   if (!seconds || seconds <= 0) return '';
   if (seconds >= 60) return `${Math.ceil(seconds / 60)} min`;
@@ -1067,7 +1067,7 @@ function buildFillScheduleCard(sched, index) {
 }
 
 function buildFillScheduleTab() {
-  const sched = SCHEDULE_CONFIG['Filling'] ?? { enabled: true, schedules: [] };
+  const sched = SCHEDULE_CONFIG['filling'] ?? { enabled: true, schedules: [] };
   const schedContent = h('div', {});
   function renderCards() {
     schedContent.innerHTML = '';

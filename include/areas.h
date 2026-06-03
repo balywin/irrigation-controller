@@ -5,7 +5,7 @@
 
 // Area configuration (grass, drip, etc.)
 struct AreaConfig {
-  char id[32];                    // "Grass", "Drip"
+  char id[32];                    // "grass", "drip"
   bool enabled;
   uint8_t pump_id;
   uint8_t main_valve_id;
@@ -21,7 +21,7 @@ namespace Areas {
   // Returns true if parsing succeeded
   bool loadAreasConfig(const JsonDocument& doc, AreaConfig* areas, uint8_t maxAreas, uint8_t& outCount);
 
-  // Find area by ID ("Grass", "Drip")
+  // Find area by ID ("grass", "drip")
   AreaConfig* findAreaById(const char* areaId, AreaConfig* areas, uint8_t areaCount);
 
   // Get zone IDs for an area (for zone switching within that area)

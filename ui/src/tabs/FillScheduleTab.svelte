@@ -16,7 +16,7 @@
     try {
       const raw = await getConfig('schedule.json');
       fullScheduleRaw = raw;
-      const section = raw['Filling'] ?? { enabled: true, schedules: [] };
+      const section = raw['filling'] ?? { enabled: true, schedules: [] };
       sectionEnabled = section.enabled ?? true;
       schedules = (section.schedules ?? []).map(s => ({
         enabled: s.enabled ?? true,
@@ -45,7 +45,7 @@
       getConfig('schedule.json').then(raw => {
         if (!raw) return;
         fullScheduleRaw = { ...(fullScheduleRaw ?? {}), ...raw };
-        const section = raw['Filling'];
+        const section = raw['filling'];
         if (section != null) sectionEnabled = section.enabled ?? true;
       }).catch(() => {});
     }
@@ -70,7 +70,7 @@
     try {
       const payload = {
         ...(fullScheduleRaw ?? {}),
-        Filling: { enabled: sectionEnabled, schedules },
+        filling: { enabled: sectionEnabled, schedules },
       };
       await saveConfig('schedule.json', payload);
       fullScheduleRaw = payload;

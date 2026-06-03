@@ -14,7 +14,7 @@
   },
   "areas": [
     {
-      "id": "Grass",
+      "id": "grass",
       "enabled": true,
       "description": "Irrigation for grass areas",
       "pump_id": 1,
@@ -25,7 +25,7 @@
       "max_minutes": 20
     },
     {
-      "id": "Drip",
+      "id": "drip",
       "enabled": false,
       "description": "Irrigation for drip areas",
       "pump_id": 2,

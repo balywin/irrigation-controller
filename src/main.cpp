@@ -855,12 +855,12 @@ void handleButtons() {
           fillingMaxMs = controllerConfig.fillingMaxMinutes / (level_2 ? 2 : level_3 ? 3 : 1) * 60 * 1000UL;
           fillingRequested = true;
           startFilling();
-          websocketNotifyHardwareCommand("start", "Filling");
+          websocketNotifyHardwareCommand("start", "filling");
         } else if (millis() - lastTimeFillingRequested < 3000UL) {
           fillingMaxMs *= 2;
         } else {
           stopFilling();
-          websocketNotifyHardwareCommand("stop", "Filling");
+          websocketNotifyHardwareCommand("stop", "filling");
         }
         if (!level_4) fillingEnabled = true;
         //i1FilterState.last_state |= 1 << (TANK_UPPER_LIMIT_SWITCH - 1);
@@ -869,32 +869,32 @@ void handleButtons() {
       case BUTTON_GRASS_MASK:    // Grass button
         if (grassIrrigationRequested) {
           stopGrassIrrigation();
-          restoreAreaManualStop("Grass");
-          websocketNotifyHardwareCommand("stop", "Grass");
+          restoreAreaManualStop("grass");
+          websocketNotifyHardwareCommand("stop", "grass");
         } else {
-          Areas::configureAreaZones("Grass", areas, numAreas);
-          armAreaManualStart("Grass");
+          Areas::configureAreaZones("grass", areas, numAreas);
+          armAreaManualStart("grass");
           startGrassIrrigation();
-          websocketNotifyHardwareCommand("start", "Grass");
+          websocketNotifyHardwareCommand("start", "grass");
         }
         break;
       case BUTTON_DRIP_MASK:    // Drip button
         if (dripIrrigationRequested) {
           stopDripIrrigation();
-          restoreAreaManualStop("Drip");
-          websocketNotifyHardwareCommand("stop", "Drip");
+          restoreAreaManualStop("drip");
+          websocketNotifyHardwareCommand("stop", "drip");
         } else {
-          Areas::configureAreaZones("Drip", areas, numAreas);
-          armAreaManualStart("Drip");
+          Areas::configureAreaZones("drip", areas, numAreas);
+          armAreaManualStart("drip");
           startDripIrrigation();
-          websocketNotifyHardwareCommand("start", "Drip");
+          websocketNotifyHardwareCommand("start", "drip");
         }
         break;
       case BUTTON_ZONE_SWITCH_MASK:    // Zone Switch button
         if (grassIrrigationRequested) {
           Zones::changeGrassZone(+1);
           lastTimeGrassZoneSwitched = millis();
-          websocketNotifyHardwareCommand("zone_next", "Grass", Zones::getGrassZoneIndex());
+          websocketNotifyHardwareCommand("zone_next", "grass", Zones::getGrassZoneIndex());
         }
         break;
       case BUTTONS_FILL_GRASS_MASK:    // Filling and Grass buttons together

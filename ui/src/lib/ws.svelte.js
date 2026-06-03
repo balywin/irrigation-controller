@@ -111,7 +111,7 @@ function applyEventToStatus(msg) {
     filling: { ...(ws.status?.filling || {}) }
   };
 
-  if (target === 'Grass' || target === 'Drip') {
+  if (target === 'grass' || target === 'drip') {
     const area = { ...(next.areas[target] || {}) };
     if (action === 'start') {
       area.running = true;
@@ -120,7 +120,7 @@ function applyEventToStatus(msg) {
     } else if (action === 'stop') {
       area.running = false;
       area.manuallyStarted = false;
-    } else if (action === 'zone_next' && target === 'Grass' && msg.zone != null) {
+    } else if (action === 'zone_next' && target === 'grass' && msg.zone != null) {
       area.zone = msg.zone;
     }
     next.areas[target] = area;
@@ -128,7 +128,7 @@ function applyEventToStatus(msg) {
     return;
   }
 
-  if (target === 'Filling') {
+  if (target === 'filling') {
     const filling = { ...(next.filling || {}) };
     if (action === 'start') {
       filling.running = true;

@@ -133,7 +133,7 @@
         manualZones[area.id] = groups.map(g => g.join(''));
         currentGroupIdxs[area.id] = 0;
       }
-      const fc = raw['Filling'] ?? {};
+      const fc = raw['filling'] ?? {};
       fillingDuration = fc.durationMinutes ?? 15;
       loadedFillingDuration = fillingDuration;
     } catch (e) {
@@ -347,11 +347,11 @@
     const manual = ws.status?.filling?.manuallyStarted;
     setPending('filling', manual ? 'stop' : 'start');
     if (manual) {
-      sendCommand('stop', 'Filling');
+      sendCommand('stop', 'filling');
     } else {
       if (fillingDurationDirty) {
         try {
-          const payload = { ...areaConfigs, Filling: { durationMinutes: fillingDuration } };
+          const payload = { ...areaConfigs, filling: { durationMinutes: fillingDuration } };
           await saveConfig('manual_control.json', payload);
           loadedFillingDuration = fillingDuration;
         } catch (e) {
@@ -360,7 +360,7 @@
           return;
         }
       }
-      sendCommand('start', 'Filling', { durationMinutes: fillingDuration });
+      sendCommand('start', 'filling', { durationMinutes: fillingDuration });
     }
   }
 
