@@ -1,0 +1,3 @@
+Currently scheduled execution can be paused for 1h clicking on emergency buttons, but this is not visible on OLED.
+OLED must show P instead of 'F' or 'G' or 'D' on OLED and the time above should show the remaining Pause-time.
+There is also a bug in WebUI - when operation is Paused for 1h, the 'Start/Stop' button is disabled, but it should serve as 'Resume' button in this case. This should be fixed.

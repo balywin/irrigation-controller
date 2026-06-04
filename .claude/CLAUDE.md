@@ -2,7 +2,7 @@
 
 When working on this project, always consult the following files for context:
 
-- **IMPLEMENTATION_PLAN.md** - Contains the implementation plan and roadmap
+- **`.claude/IMPLEMENTATION_PLAN.md`** - Contains the implementation plan and roadmap
 - **README.md** - Project overview and documentation
 - **README_EMBED_UI.md** - Embedded UI specific documentation
 
@@ -15,7 +15,7 @@ When working on this project, always consult the following files for context:
 - The `data/` directory is for LittleFS/config files and config samples. Do not describe it as the Svelte build output directory.
 - Runtime config files live on LittleFS under `/config/*.json`; the working source copies are under `data/config/`, and canonical sample schemas live under `data/config/samples/`.
 - Do not edit files under `data/config/samples/` unless the user explicitly asks. They are schema references and firmware default source material.
-- `AGENTS.md` is a symlink to this file, so update `CLAUDE.md` for project-agent instructions.
+- `AGENTS.md` at the project root is a symlink to this file (`.claude/CLAUDE.md`), so update `.claude/CLAUDE.md` for project-agent instructions.
 
 ## Area IDs
 
