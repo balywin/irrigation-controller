@@ -52,11 +52,13 @@ ui/src/
 │   ├── api.js              (REST API helpers)
 │   └── ws.svelte.js        (WebSocket client, shared reactive state)
 └── tabs/
-    ├── ManualTab.svelte     (all areas' manual controls + filling control)
-    ├── AreaTab.svelte       (per-area schedule configuration)
-    ├── ScheduleCard.svelte  (individual schedule entry card)
-    ├── SettingsTab.svelte   (app config, WiFi, filling config, area hardware config)
-    └── FirmwareTab.svelte   (OTA update iframe)
+    ├── ManualTab.svelte        (all areas' manual controls + filling control)
+    ├── AreaTab.svelte          (per-area schedule configuration)
+    ├── ScheduleCard.svelte     (individual schedule entry card)
+    ├── FillScheduleTab.svelte  (filling schedule configuration tab)
+    ├── FillScheduleCard.svelte (individual filling schedule entry card)
+    ├── SettingsTab.svelte      (app config, WiFi, filling config, area hardware config)
+    └── FirmwareTab.svelte      (OTA update iframe)
 ```
 
 ## Configuration Management
@@ -175,10 +177,10 @@ All areas' manual controls are placed in this single tab. **Filling card is rend
 
 ### Settings Tab
 
-- Allows editing all parameters existing in `data/config/samples/app_config.sample.json`
-- Loads and saves in file `data/config/app_config.json`
-- Backup / restore all configs as a separate file in `data/config/`, for example `data/config/app_config_bkp1.json`
-- Reset app_config by copying file `data/config/samples/app_config.sample.json` into `data/config/app_config.json`
+- Allows editing all parameters existing in `data/config/samples/app_config.sample.json` (schema reference)
+- Loads via WS `get_config` and saves via WS `save_config` to LittleFS `/config/app_config.json`
+- Backup / restore all configs as a separate file on LittleFS (e.g. `/config/app_config_bkp1.json`)
+- Reset app_config via WS `reset_config`, which copies `/config/samples/app_config.sample.json` → `/config/app_config.json` on LittleFS
 
 ### Firmware Tab
 

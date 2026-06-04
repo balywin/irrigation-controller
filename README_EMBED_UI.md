@@ -6,20 +6,37 @@ Goal
 - On first boot (or when configs are missing or corrupted), copy embedded default configs into LittleFS.
 
 Workflow
-1. Build your Svelte app (e.g. `npm run build`) so the compiled files are available (dist or public/build).
-2. Run the embed tool to generate a C header with PROGMEM arrays:
+Building the firmware with PlatformIO handles everything automatically via two pre-build scripts
+configured in `platformio.ini`:
 
+1. `tools/embed_configs.py` — embeds `data/config/samples/` into `include/embedded_configs.h`
+   using URL prefix `/config/`.
+2. `tools/embed_ui.py` — runs `npm run build` in `ui/`, then embeds the fresh `ui/dist/` output
+   into `include/embedded_files.h` using URL prefix `/` and gzip compression.
+   Internally calls `tools/embed_static.js` with `--input ui/dist --output include/embedded_files.h
+   --prefix / --gzip`.
+
+To build and flash:
 ```bash
-node tools/embed_static.js --input ui/public/build --output include/embedded_files.h --prefix / --gzip
+pio run -e denky32 -t upload
 ```
 
-3. In PlatformIO project, include `include/embedded_files.h` (it will be generated) and call `setupEmbeddedWebServer(server);` from your `setup()` after calling `LittleFS.begin()`.
-4. Upload firmware via PlatformIO. The web assets are embedded in the firmware image.
+No manual embed step is required. Both headers are regenerated on every `pio run`.
+
+To iterate on UI only (no firmware flash needed):
+```bash
+cd ui && npm run build
+```
+Then run `pio run` to embed and flash.
 
 Notes
-- The web page is now embedded; editing it requires firmware update. The config JSONs are stored in LittleFS so they can be edited from the UI.
-- The embed tool gzips assets if --gzip is passed and keeps compressed data when it's beneficial.
+- The web page is embedded in the firmware image; editing it requires a firmware update.
+  Config JSONs are stored in LittleFS so they can be edited from the UI without reflashing.
+- `include/embedded_files.h` and `include/embedded_configs.h` are generated files.
+  Do not edit them by hand — regenerate via `pio run`.
+- `data/` is not the Svelte build output directory. Do not copy `ui/dist` into `data/`.
 - The web server module falls back to `/index.html` for SPA navigation.
+- The embed tool gzips assets when it reduces size.
 
 Next steps / optional
 - Add file versioning so that when a new firmware contains updated default configs you can either force overwrite or merge.

@@ -68,7 +68,7 @@ The firmware is built using PlatformIO and runs on ESP32. It:
    - manual control execution, including handling of the 'Start' and 'Stop' commands from the web interface and physical buttons, with appropriate state transitions and safety checks (e.g. water level too low)
     
 ## 2. Configuration
-Configuration is stored as JSON files in LittleFS directory `./data/config`. The main config files are:
+Configuration is stored as JSON files in LittleFS under `/config/*.json`. The working source copies are checked into `data/config/` for development; canonical default schemas live in `data/config/samples/`. The main config files are:
  - `app_config.json` - as per sample config file `app_config.sample.json` inside `samples` directory. Areas should be an array, zones in each area should be an array of numbers, and zone names should be an array of strings
  - `schedule.json` - contains irrigation schedules for each area. Each schedule's `zones` uses the **same zone-groups format as `manual_control.json`**: an array of groups where each group is an array of zone IDs that fire simultaneously, and the cycle iterates through groups for `durationMinutes` each. Backwards compat: flat array `[3, 4]` is auto-migrated to `[[3], [4]]`. See sample config file `schedule.sample.json` inside `samples` directory.
  - `manual_control.json` - contains manual control state for each area. Per area:
@@ -88,12 +88,16 @@ Frontend-facing backend endpoints:
   - `GET /`
   - `GET /index.html`
   - `GET /assets/*`
-- Config CRUD:
-  - `GET/PUT /config/app_config.json`
-  - `GET/PUT /config/schedule.json`
-  - `GET/PUT /config/manual_control.json`
-- Runtime status:
-  - `GET /status`
+- Config REST API (preferred interface is WebSocket `get_config`/`save_config`/`reset_config`):
+  - `GET /api/config` - list available config files
+  - `GET /api/config/<file>.json` - read a config file from LittleFS
+  - `POST /api/config/<file>.json` - write a config file to LittleFS
+- Legacy irrigation REST control (superceded by WebSocket `command` messages):
+  - `GET /api/irrigation/status`
+  - `POST /api/irrigation/grass/start`
+  - `POST /api/irrigation/grass/stop`
+  - `POST /api/irrigation/drip/start`
+  - `POST /api/irrigation/drip/stop`
 - OTA:
   - `GET /update` - OTA web page
   - `GET /ota/start` - initialize OTA session (mode/hash validation + update init)

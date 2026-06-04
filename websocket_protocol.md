@@ -81,8 +81,8 @@ Sent:
     "device": { "uptime": 1234, "firmware": "0.1.0", "heap": 214512 },
     "sensors": { "waterLevel": 75, "tankPressure": 100200 },
     "areas": {
-      "Grass": { "running": true, "manuallyStarted": true, "scheduleActive": 1, "pausedUntil": null, "activeGroupIndex": 2, "remainingSeconds": 935, "groupRemainingSeconds": 47 },
-      "Drip": { "running": false, "manuallyStarted": false, "scheduleActive": -1, "pausedUntil": null, "activeGroupIndex": -1, "remainingSeconds": 0, "groupRemainingSeconds": 0 }
+      "grass": { "running": true, "manuallyStarted": true, "scheduleActive": 1, "pausedUntil": null, "activeGroupIndex": 2, "activeZones": [1, 3], "remainingSeconds": 935, "groupRemainingSeconds": 47 },
+      "drip": { "running": false, "manuallyStarted": false, "scheduleActive": -1, "pausedUntil": null, "activeGroupIndex": -1, "activeZones": [], "remainingSeconds": 0, "groupRemainingSeconds": 0 }
     },
     "filling": { "running": false, "manuallyStarted": false, "scheduleActive": false, "enabled": true, "pausedUntil": null, "remainingSeconds": 0 },
     "pumps": { "1": true, "2": false, "3": false },
