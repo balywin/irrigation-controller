@@ -8,6 +8,7 @@
 #include "file_utils.h"
 #include "schedule_cache.h"
 #include "zones.h"
+#include "network.h"
 
 namespace {
 
@@ -218,6 +219,8 @@ String buildStatusJson() {
   device["uptime"] = millis() / 1000UL;
   device["firmware"] = FIRMWARE_VERSION;
   device["heap"] = ESP.getFreeHeap();
+  int rssi = getNetworkRssi();
+  if (rssi != 0) device["rssi"] = rssi;
 
   JsonObject sensors = data["sensors"].to<JsonObject>();
   sensors["waterLevel"] = getWaterLevelPercent();
@@ -483,6 +486,11 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
       gFillingScheduleActive  = false;
       restoreAreaSchedule("filling", gDisarmFilling);
     }
+    return true;
+  }
+
+  if (action == "resume") {
+    *pauseRef = 0;
     return true;
   }
 
@@ -868,4 +876,26 @@ void websocketProtocolLoop() {
     checkSchedules();
     broadcastStatusIfChanged();
   }
+}
+
+bool isAreaPausedByKey(const char* area) {
+  String a = area;
+  a.toLowerCase();
+  unsigned long ms = 0;
+  if (a == "grass") ms = gPauseUntilGrassMs;
+  else if (a == "drip") ms = gPauseUntilDripMs;
+  else if (a == "filling") ms = gPauseUntilFillingMs;
+  else return false;
+  return isPaused(ms);
+}
+
+unsigned long areaRemainingPauseMs(const char* area) {
+  String a = area;
+  a.toLowerCase();
+  unsigned long target = 0;
+  if (a == "grass") target = gPauseUntilGrassMs;
+  else if (a == "drip") target = gPauseUntilDripMs;
+  else if (a == "filling") target = gPauseUntilFillingMs;
+  if (!isPaused(target)) return 0;
+  return target - millis();
 }

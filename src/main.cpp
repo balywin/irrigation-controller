@@ -233,8 +233,14 @@ void showStates() {
     oled_show(7, states, 1);
   }
 
+  bool grassPaused   = isAreaPausedByKey("grass");
+  bool dripPaused    = isAreaPausedByKey("drip");
+  bool fillingPaused = isAreaPausedByKey("filling");
+
   String grassIndicator = "";
-  if (grassIrrigationRequested) {
+  if (grassPaused) {
+    grassIndicator = "P";
+  } else if (grassIrrigationRequested) {
     grassIndicator = "G";
     const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
     if (grassRun.count > 0) {
@@ -246,9 +252,9 @@ void showStates() {
       grassIndicator += String(Zones::getGrassZoneIndex());
     }
   }
-  // Fixed format: F + 1sp + 4-char grass (padded) + 1sp — 'D' always at col 6
+  // Fixed format: F/P + 1sp + 4-char grass/P (padded) — 'D'/'P' always at col 6
   snprintf(pumpStates, sizeof(pumpStates), "%c %-4s",
-           fillingRequested ? 'F' : ' ',
+           fillingPaused ? 'P' : (fillingRequested ? 'F' : ' '),
            grassIndicator.c_str());
 
   uint32_t tensMax = 1UL;
@@ -264,7 +270,21 @@ void showStates() {
   oled_show_at(19, 2, iMax != 0 ? states : "  ", 1);
 
   oled_show_at(0, 4, pumpStates, 2);
-  oled_show_at(6, 4, dripIrrigationRequested ? "D" : " ", 2);
+  oled_show_at(6, 4, dripPaused ? "P" : (dripIrrigationRequested ? "D" : " "), 2);
+
+  // Show pause countdown on line 3 when any area is paused
+  bool anyPaused = grassPaused || dripPaused || fillingPaused;
+  if (anyPaused) {
+    unsigned long remMs = 0;
+    if (grassPaused)        remMs = areaRemainingPauseMs("grass");
+    else if (dripPaused)    remMs = areaRemainingPauseMs("drip");
+    else                    remMs = areaRemainingPauseMs("filling");
+    uint32_t remMin = (uint32_t)((remMs + 59000UL) / 60000UL);  // ceil minutes
+    snprintf(states, sizeof(states), "P%3lum", (unsigned long)remMin);
+    oled_show_at(0, 3, states, 1);
+  } else {
+    oled_show_at(0, 3, "     ", 1);  // clear the 5-char pause slot
+  }
 
   if (filterState.last_state != previousFilteredState) {
     previousFilteredState = filterState.last_state;
