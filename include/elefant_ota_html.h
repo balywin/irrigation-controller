@@ -18,6 +18,8 @@ select,input[type=file]{width:100%;padding:0.45rem 0.6rem;border:1px solid #d1d5
 .btn{display:block;width:100%;background:#2563eb;color:#fff;border:none;padding:0.6rem 1rem;border-radius:6px;cursor:pointer;font-size:0.95rem;font-weight:600;margin-top:0.25rem;transition:background 0.15s}
 .btn:hover:not(:disabled){background:#1d4ed8}
 .btn:disabled{background:#9ca3af;cursor:default}
+.btn-retry{background:#16a34a}
+.btn-retry:hover:not(:disabled){background:#15803d}
 #progress-wrap{margin-top:0.75rem;display:none}
 #progress-bar{height:8px;background:#dbeafe;border-radius:4px;overflow:hidden}
 #progress-fill{height:100%;background:#2563eb;width:0%;transition:width 0.2s}
@@ -39,6 +41,7 @@ select,input[type=file]{width:100%;padding:0.45rem 0.6rem;border:1px solid #d1d5
   <label for="file">Binary file</label>
   <input type="file" id="file" accept=".bin">
   <button class="btn" id="btn" onclick="upload()" disabled>Upload</button>
+  <button class="btn btn-retry" id="retry-btn" onclick="retry()" style="display:none;margin-top:0.5rem">Retry Upload</button>
   <div id="progress-wrap">
     <div id="progress-bar"><div id="progress-fill"></div></div>
     <div id="pct">0%</div>
@@ -46,30 +49,84 @@ select,input[type=file]{width:100%;padding:0.45rem 0.6rem;border:1px solid #d1d5
   <div id="status"></div>
 </div>
 <script>
-const fileEl=document.getElementById('file'),btn=document.getElementById('btn'),
-      statusEl=document.getElementById('status'),wrap=document.getElementById('progress-wrap'),
-      fill=document.getElementById('progress-fill'),pct=document.getElementById('pct');
+const fileEl=document.getElementById('file'),
+      btn=document.getElementById('btn'),
+      retryBtn=document.getElementById('retry-btn'),
+      statusEl=document.getElementById('status'),
+      wrap=document.getElementById('progress-wrap'),
+      fill=document.getElementById('progress-fill'),
+      pct=document.getElementById('pct');
+
+const MAX_RETRIES=10,PROBE_MS=3000;
+
 fileEl.addEventListener('change',()=>{btn.disabled=!fileEl.files.length;});
-async function upload(){
-  const file=fileEl.files[0];if(!file)return;
-  const mode=document.getElementById('mode').value;
-  btn.disabled=true;statusEl.className='';statusEl.textContent='Initialising…';
-  wrap.style.display='block';fill.style.width='0%';pct.textContent='0%';
+
+function setBar(p){fill.style.width=p+'%';pct.textContent=p+'%';}
+function setStatus(msg,cls){statusEl.className=cls||'';statusEl.textContent=msg;}
+
+function showFatal(msg){
+  setStatus(msg,'err');
+  retryBtn.style.display='block';
+  btn.disabled=false;
+}
+
+async function doUpload(file,mode,attempt){
+  retryBtn.style.display='none';
+  setBar(0);
+  wrap.style.display='block';
+  setStatus('Uploading… (attempt '+attempt+'/'+MAX_RETRIES+')');
   try{
-    const init=await fetch('/ota/start?mode='+mode,{method:'GET'});
-    if(!init.ok)throw new Error('Init failed: '+await init.text());
-    statusEl.textContent='Uploading…';
+    const ac=new AbortController();
+    const t=setTimeout(()=>ac.abort(),8000);
+    let init;
+    try{init=await fetch('/ota/start?mode='+mode,{signal:ac.signal});}
+    finally{clearTimeout(t);}
+    if(!init.ok)throw Object.assign(new Error('Init failed: '+await init.text()),{fatal:true});
     await new Promise((resolve,reject)=>{
       const xhr=new XMLHttpRequest();
       xhr.open('POST','/ota/upload');
-      xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);fill.style.width=p+'%';pct.textContent=p+'%';}};
-      xhr.onload=()=>{if(xhr.status===200){fill.style.width='100%';pct.textContent='100%';resolve();}else reject(new Error(xhr.responseText||'Upload error '+xhr.status));};
+      xhr.timeout=30000;
+      xhr.ontimeout=()=>reject(new Error('Upload timeout'));
+      xhr.upload.onprogress=e=>{if(e.lengthComputable)setBar(Math.round(e.loaded/e.total*100));};
+      xhr.onload=()=>{
+        if(xhr.status===200){setBar(100);resolve();}
+        else reject(Object.assign(new Error(xhr.responseText||'Upload error '+xhr.status),{fatal:true}));
+      };
       xhr.onerror=()=>reject(new Error('Network error'));
       const fd=new FormData();fd.append('firmware',file,file.name);xhr.send(fd);
     });
-    statusEl.className='ok';statusEl.textContent='Done! Device rebooting — reconnecting in 10 s…';
+    setStatus('Done! Device rebooting — reconnecting in 10 s…','ok');
     setTimeout(()=>location.reload(),10000);
-  }catch(e){statusEl.className='err';statusEl.textContent=e.message;btn.disabled=false;}
+  }catch(e){
+    setBar(0);
+    if(e.fatal){showFatal(e.message);return;}
+    if(attempt>=MAX_RETRIES){showFatal('Upload failed after '+MAX_RETRIES+' attempts.');return;}
+    waitRetry(file,mode,attempt);
+  }
+}
+
+function waitRetry(file,mode,attempt){
+  setStatus('Connection lost — attempt '+attempt+'/'+MAX_RETRIES+'. Reconnecting…');
+  const probe=()=>{
+    const ac=new AbortController();
+    const t=setTimeout(()=>ac.abort(),8000);
+    fetch('/update',{signal:ac.signal})
+      .then(r=>{clearTimeout(t);if(r.ok)doUpload(file,mode,attempt+1);else setTimeout(probe,PROBE_MS);})
+      .catch(()=>{clearTimeout(t);setTimeout(probe,PROBE_MS);});
+  };
+  setTimeout(probe,PROBE_MS);
+}
+
+function upload(){
+  const file=fileEl.files[0];if(!file)return;
+  btn.disabled=true;
+  doUpload(file,document.getElementById('mode').value,1);
+}
+
+function retry(){
+  const file=fileEl.files[0];if(!file)return;
+  btn.disabled=true;
+  doUpload(file,document.getElementById('mode').value,1);
 }
 </script>
 </body>

@@ -34,7 +34,8 @@
       "Bash(npm --prefix ui run build)",
       "Bash(sed -n '170,195p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/tabs/ScheduleCard.svelte)",
       "Bash(sed -n '55,75p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/tabs/FillScheduleCard.svelte)",
-      "Bash(ln -s .claude/CLAUDE.md /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/AGENTS.md)"
+      "Bash(ln -s .claude/CLAUDE.md /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/AGENTS.md)",
+      "Bash(node *)"
     ]
   },
   "outputStyle": "Explanatory"

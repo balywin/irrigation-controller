@@ -90,7 +90,12 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
           _update_error_str.concat("\n");
           ELEGANTOTA_DEBUG_MSG(_update_error_str.c_str());
         }
-      #elif defined(ESP32)  
+      #elif defined(ESP32)
+        if (Update.isRunning()) {
+          Update.abort();
+        }
+        _current_progress_size = 0;
+        _update_error_str = "";
         if (!Update.begin(UPDATE_SIZE_UNKNOWN, mode == OTA_MODE_FILESYSTEM ? U_SPIFFS : U_FLASH)) {
           ELEGANTOTA_DEBUG_MSG("Failed to start update process\n");
           // Save error to string
@@ -99,7 +104,7 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
           _update_error_str = str.c_str();
           _update_error_str.concat("\n");
           ELEGANTOTA_DEBUG_MSG(_update_error_str.c_str());
-        }        
+        }
       #elif defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350)
         uint32_t update_size = 0;
         // Gather FS Size
@@ -180,7 +185,12 @@ void ElegantOTAClass::begin(ELEGANTOTA_WEBSERVER *server, const char * username,
           _update_error_str.concat("\n");
           ELEGANTOTA_DEBUG_MSG(_update_error_str.c_str());
         }
-      #elif defined(ESP32)  
+      #elif defined(ESP32)
+        if (Update.isRunning()) {
+          Update.abort();
+        }
+        _current_progress_size = 0;
+        _update_error_str = "";
         if (!Update.begin(UPDATE_SIZE_UNKNOWN, mode == OTA_MODE_FILESYSTEM ? U_SPIFFS : U_FLASH)) {
           ELEGANTOTA_DEBUG_MSG("Failed to start update process\n");
           // Save error to string
