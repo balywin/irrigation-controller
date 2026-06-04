@@ -209,6 +209,7 @@
       const m = ws.status?.areas?.[area.id]?.manuallyStarted ?? false;
       if (p === 'start' && m) clearPending(area.id);
       if (p === 'stop' && !m) clearPending(area.id);
+      if (p === 'resume' && !ws.status?.areas?.[area.id]?.pausedUntil) clearPending(area.id);
     }
     const fp = pendingAction['filling'];
     if (fp && lastMsgAt > (clickedAt['filling'] ?? 0)) {
@@ -225,7 +226,13 @@
   // the per-group switch interval (durationMinutes).
   async function toggleArea(areaId) {
     const manual = ws.status?.areas?.[areaId]?.manuallyStarted;
+    const paused = ws.status?.areas?.[areaId]?.pausedUntil != null;
     if (pendingAction[areaId]) return;
+    if (paused) {
+      setPending(areaId, 'resume');
+      sendCommand('resume', areaId);
+      return;
+    }
     if (!manual) pruneEmptyGroups(areaId);
     setPending(areaId, manual ? 'stop' : 'start');
     if (manual) {
@@ -486,11 +493,11 @@
     {@const canStart = enabled && !scheduleActive && !noZones && !noDuration}
     {@const canStop = enabled && manuallyStarted}
     {@const isPaused = ws.status?.areas?.[area.id]?.pausedUntil != null}
-    {@const startDisabledReason = !enabled ? 'Area disabled in settings' : scheduleActive ? 'Running by schedule' : isPaused ? 'Paused by schedule' : noZones ? 'No zones selected' : noDuration ? 'Duration must be > 0' : ''}
+    {@const startDisabledReason = !enabled ? 'Area disabled in settings' : scheduleActive ? 'Running by schedule' : noZones ? 'No zones selected' : noDuration ? 'Duration must be > 0' : ''}
     {@const pending = pendingAction[area.id]}
-    {@const btnLabel = pending === 'start' ? 'Starting…' : pending === 'stop' ? 'Stopping…' : (manuallyStarted ? 'Stop' : 'Start')}
+    {@const btnLabel = pending === 'start' ? 'Starting…' : pending === 'stop' ? 'Stopping…' : pending === 'resume' ? 'Resuming…' : (manuallyStarted ? 'Stop' : isPaused ? 'Resume' : 'Start')}
     {@const btnBg = manuallyStarted ? '#ef4444' : AREA_COLORS[i % AREA_COLORS.length]}
-    {@const btnDisabled = wsDown || !!pending || (manuallyStarted ? !canStop : (!canStart || isPaused))}
+    {@const btnDisabled = wsDown || !!pending || (manuallyStarted ? !canStop : (!canStart && !isPaused))}
     {#if ac}
       {@const curIdx = currentGroupIdxs[area.id] ?? 0}
       {@const curGroup = ac.zones[curIdx] ?? []}

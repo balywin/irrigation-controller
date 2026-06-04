@@ -182,6 +182,14 @@ body {
 .ws-icon.ws-reconnecting{ filter: hue-rotate(270deg) saturate(1.4) brightness(1.1); opacity: 1; animation: ws-pulse 1s infinite; }
 .ws-icon.ws-disconnected{ filter: hue-rotate(240deg) saturate(1.3) brightness(1.05); opacity: 1; }
 
+.rssi-badge {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .ws-connected { background: #16a34a; }
 .ws-reconnecting { background: #f59e0b; animation: ws-pulse 1s infinite; }
 .ws-disconnected { background: #dc2626; }

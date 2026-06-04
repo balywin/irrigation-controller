@@ -20,6 +20,7 @@
 
   let areas = $derived(appConfig?.areas ?? []);
   let waterLevel = $derived(ws.status?.sensors?.waterLevel ?? null);
+  let wifiRssi = $derived(ws.status?.device?.rssi ?? null);
 
   let manualZones = $state({});
 
@@ -267,6 +268,9 @@
 
   <nav>
     <img src={wsIcon} alt="WebSocket {ws.state}" class="ws-icon {WS_CLASSES[ws.state] ?? 'ws-disconnected'}" title={wsTooltip()} />
+    {#if wifiRssi !== null}
+      <span class="rssi-badge" title="WiFi signal: {wifiRssi} dBm">{wifiRssi} dBm</span>
+    {/if}
     <button class:active={activeTab === 'manual'} onclick={() => activeTab = 'manual'}>
       {#if appConfig?.filling?.enabled !== false}
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#fb923c;margin-right:6px;vertical-align:middle;visibility:{manualVis('filling')};"></span>

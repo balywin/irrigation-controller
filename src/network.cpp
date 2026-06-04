@@ -420,3 +420,12 @@ uint32_t getServerStartedEventTime() {
 void clearServerStartedEventTime() {
   serverStartedEventTime = 0;
 }
+
+int getNetworkRssi() {
+#ifdef WIFI_NO_ETHERNET
+  if (!WiFi.isConnected()) return 0;
+  return (int)WiFi.RSSI();
+#else
+  return 0;
+#endif
+}

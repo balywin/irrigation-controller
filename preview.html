@@ -45,6 +45,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; m
 .ws-icon.ws-connected   { filter: saturate(0.85) brightness(1.35); opacity: 1; }
 .ws-icon.ws-reconnecting{ filter: hue-rotate(270deg) saturate(1.4) brightness(1.1); opacity: 1; animation: ws-pulse 1s infinite; }
 .ws-icon.ws-disconnected{ filter: hue-rotate(240deg) saturate(1.3) brightness(1.05); opacity: 1; }
+.rssi-badge {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 .ws-connected { background: #16a34a; }
 .ws-reconnecting { background: #f59e0b; animation: ws-pulse 1s infinite; }
 .ws-disconnected { background: #dc2626; }
@@ -547,12 +554,15 @@ function buildManualTab() {
         startBtn.textContent = 'Stopping…'; startBtn.style.background = '#ef4444'; startBtn.disabled = true; startBtn.title = '';
       } else if (manualActive) {
         startBtn.textContent = 'Stop'; startBtn.style.background = '#ef4444'; startBtn.disabled = false; startBtn.title = '';
+      } else if (paused) {
+        startBtn.textContent = 'Resume'; startBtn.style.background = areaColor;
+        startBtn.disabled = false; startBtn.title = '';
       } else {
         startBtn.textContent = 'Start'; startBtn.style.background = areaColor;
         const noZones = groups.length === 0;
         const noDuration = !currentDuration || currentDuration <= 0;
-        startBtn.disabled = noZones || noDuration || paused;
-        startBtn.title = paused ? 'Paused by schedule' : noZones ? 'No zones selected' : noDuration ? 'Duration must be > 0' : '';
+        startBtn.disabled = noZones || noDuration;
+        startBtn.title = noZones ? 'No zones selected' : noDuration ? 'Duration must be > 0' : '';
       }
     };
     updaters[area.id] = () => { updateBtn(); renderGroups(); };
@@ -584,6 +594,7 @@ function buildManualTab() {
           refreshEBar();
         }, 800);
       };
+      const paused = st === 'paused';
       if (manualActive) {
         pendingAction = 'stop';
         updateBtn();
@@ -593,6 +604,10 @@ function buildManualTab() {
           updateBtn();
           refreshEBar();
         }, 800);
+      } else if (paused) {
+        pendingAction = 'stop';
+        updateBtn();
+        setTimeout(() => { state.eState[area.id] = 'inactive'; pendingAction = null; updateBtn(); }, 600);
       } else if (isPreviewDirty()) {
         // Simulate save-before-start: brief "Saving…" phase then proceed.
         pendingAction = 'saving';
@@ -1205,6 +1220,8 @@ function buildNav() {
     wsDot.title = tip;
   });
   nav.append(wsDot);
+  const rssiEl = h('span', { class: 'rssi-badge', title: 'WiFi signal: -67 dBm' }, '-67 dBm');
+  nav.append(rssiEl);
   tabDefs.forEach(def => {
     const attrs = { 'data-tab': def.id, style: 'position:relative;' + (def.color ? `color:${def.color};` : '') };
     if (def.color) attrs['data-color'] = def.color;

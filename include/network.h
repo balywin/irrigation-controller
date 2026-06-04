@@ -22,6 +22,7 @@ extern AsyncWebServer server;
 uint8_t getNetworkStatus();
 IPAddress getNetworkLocalIp();
 bool getNetworkIsConnected();
+int getNetworkRssi();  // Returns RSSI dBm if WiFi connected, 0 otherwise
 String getNetworkMacAddress();
 
 void networkInit();
