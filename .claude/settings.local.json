@@ -31,7 +31,9 @@
       "Bash(sed -n '371,380p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/src/main.cpp)",
       "Bash(sed -n '51,60p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/src/zones.cpp)",
       "Read(//Users/baa1sf3/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
-      "Bash(npm --prefix ui run build)"
+      "Bash(npm --prefix ui run build)",
+      "Bash(sed -n '170,195p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/tabs/ScheduleCard.svelte)",
+      "Bash(sed -n '55,75p' /Users/baa1sf3/balywin/PlatformIO/irrigation-controller/ui/src/tabs/FillScheduleCard.svelte)"
     ]
   },
   "outputStyle": "Explanatory"

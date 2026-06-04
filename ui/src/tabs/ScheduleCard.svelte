@@ -176,7 +176,7 @@
           <input
             id="time-{type}-{index}-{ti}"
             type="time"
-            lang="en-GB"
+            lang="en-BG"
             bind:value={schedule.startTimes[ti]}
           />
           <button type="button" class="btn btn-danger btn-sm" onclick={() => removeTime(ti)}>✕</button>

@@ -966,7 +966,7 @@ function buildScheduleCard(sched, index, area, onstart) {
   }));
   const timeList = h('div', { class: 'time-list' },
     ...sched.startTimes.map(t => h('div', { class: 'time-row' },
-      h('input', { type: 'time', lang: 'en-GB', value: t, style: 'padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }),
+      h('input', { type: 'time', lang: 'en-BG', value: t, style: 'padding:0.3rem 0.5rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.875rem;' }),
       h('button', { class: 'btn btn-danger btn-sm' }, '✕'))),
     h('button', { class: 'btn btn-secondary btn-sm' }, '+ Add time'));
   const srOff = numInput(sched.sunriseSchedule.sunriseOffsetMinutes); srOff.style.width = '55px'; srOff.disabled = !sched.sunriseSchedule.enabled;
@@ -1037,7 +1037,7 @@ function buildFillScheduleCard(sched, index) {
   function renderTimes() {
     timesBox.innerHTML = '';
     times.forEach((t, ti) => {
-      const inp = h('input', { type: 'time', lang: 'en-GB', value: t });
+      const inp = h('input', { type: 'time', lang: 'en-BG', value: t });
       const delBtn = h('button', { class: 'btn btn-danger btn-sm' }, '✕');
       delBtn.addEventListener('click', () => { times.splice(ti, 1); renderTimes(); });
       timesBox.append(h('div', { class: 'time-row' }, inp, delBtn));
