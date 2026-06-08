@@ -191,22 +191,30 @@ void showTime() {
   oled_show_at(0, 0, temp);
   oled_show_at(11, 0, timeSet || timeBlink ? tm : "           ");
 
+  bool grassPaused   = isAreaPausedByKey("grass");
+  bool dripPaused    = isAreaPausedByKey("drip");
+  bool fillingPaused = isAreaPausedByKey("filling");
+
   if (getServerStartedEventTime() != 0) {
     if (millis() > getServerStartedEventTime() + 5000UL) {
       oled_clear_line(2);
       clearServerStartedEventTime();
     }
   } else {
-    if (fillingRequested) {
-      sprintf(temp, "%02lu:%02lu", getFillingRemainingMs() / 60000UL, (getFillingRemainingMs() / 1000UL) % 60);
+    unsigned long remFillMs = fillingPaused ? areaRemainingPauseMs("filling") : getFillingRemainingMs();
+    unsigned long remGrassMs = grassPaused ? areaRemainingPauseMs("grass") : getGrassRemainingMs();
+    unsigned long remDripMs = dripPaused ? areaRemainingPauseMs("drip") : getDripRemainingMs();
+
+    if (remFillMs > 0) {
+      sprintf(temp, "%02lu:%02lu", remFillMs / 60000UL, (remFillMs / 1000UL) % 60);
       oled_show_at(0, 2, temp);
     } else oled_clear_from(2, 1, 0, 6);
-    if (isGrassIrrigating()) {
-      sprintf(temp, "%02lu:%02lu", getGrassRemainingMs()   / 60000UL, (getGrassRemainingMs()   / 1000UL) % 60);
+    if (remGrassMs > 0) {
+      sprintf(temp, "%02lu:%02lu", remGrassMs   / 60000UL, (remGrassMs   / 1000UL) % 60);
       oled_show_at(6, 2, temp);
     } else oled_clear_from(2, 1, 6, 6);
-    if (isDripIrrigating()) {
-      sprintf(temp, "%02lu:%02lu", getDripRemainingMs()    / 60000UL, (getDripRemainingMs()    / 1000UL) % 60);
+    if (remDripMs > 0) {
+      sprintf(temp, "%02lu:%02lu", remDripMs    / 60000UL, (remDripMs    / 1000UL) % 60);
       oled_show_at(12, 2, temp);
     } else oled_clear_from(2, 1, 12, 6);
   }
@@ -237,11 +245,8 @@ void showStates() {
   bool dripPaused    = isAreaPausedByKey("drip");
   bool fillingPaused = isAreaPausedByKey("filling");
 
-  String grassIndicator = "";
-  if (grassPaused) {
-    grassIndicator = "P";
-  } else if (grassIrrigationRequested) {
-    grassIndicator = "G";
+  String grassIndicator = grassPaused ? "P" : grassIrrigationRequested ? "G" : " ";
+  if (grassIrrigationRequested) {
     const ZoneRunConfig& grassRun = Zones::getGrassRunConfig();
     if (grassRun.count > 0) {
       const uint8_t sz = grassRun.sizes[grassRun.activeIdx];
@@ -271,20 +276,6 @@ void showStates() {
 
   oled_show_at(0, 4, pumpStates, 2);
   oled_show_at(6, 4, dripPaused ? "P" : (dripIrrigationRequested ? "D" : " "), 2);
-
-  // Show pause countdown on line 3 when any area is paused
-  bool anyPaused = grassPaused || dripPaused || fillingPaused;
-  if (anyPaused) {
-    unsigned long remMs = 0;
-    if (grassPaused)        remMs = areaRemainingPauseMs("grass");
-    else if (dripPaused)    remMs = areaRemainingPauseMs("drip");
-    else                    remMs = areaRemainingPauseMs("filling");
-    uint32_t remMin = (uint32_t)((remMs + 59000UL) / 60000UL);  // ceil minutes
-    snprintf(states, sizeof(states), "P%3lum", (unsigned long)remMin);
-    oled_show_at(0, 3, states, 1);
-  } else {
-    oled_show_at(0, 3, "     ", 1);  // clear the 5-char pause slot
-  }
 
   if (filterState.last_state != previousFilteredState) {
     previousFilteredState = filterState.last_state;
@@ -458,12 +449,8 @@ bool isGrassIrrigating() { return grassIrrigationRequested; }
 bool isDripIrrigating()  { return dripIrrigationRequested; }
 
 void startFilling() {
-  if (level_4) {
-    fillingEnabled = false;
-    return;
-  }
-  fillingEnabled = true;
   fillingRequested = true;
+  fillingEnabled = !level_4;
   lastTimeFillingRequested = millis();
   leakageDetectorCounter = 0;
 }
