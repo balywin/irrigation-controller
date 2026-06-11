@@ -3,4 +3,4 @@
 #include <ArduinoJson.h>
 
 bool initFs();
-bool loadJsonFile(JsonDocument& doc, String fileName);
+bool loadJsonFile(JsonDocument& doc, const String& fileName);

@@ -7,6 +7,7 @@
     "enabled": true,
     "max_minutes": 16,
     "pump_id": 3,
+
     "level_filtering_seconds": 10,
     "leakage_detector_threshold": 3,
     "high_level_pressure": 120000,
