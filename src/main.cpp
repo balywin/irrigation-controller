@@ -22,7 +22,6 @@
 #include "i2c/inout.h"
 #include "i2c/oled.h"
 #include "network.h"
-#include "webserver_embedded.h"
 #include "websocket_protocol.h"
 #include "zones.h"
 #include "areas.h"
@@ -112,6 +111,12 @@ uint8_t grassZones[MAX_NUMBER_OF_GRASS_ZONES];
 uint8_t dripZones[MAX_NUMBER_OF_DRIP_ZONES];
 
 void applyAppConfig(const JsonDocument& doc) {
+  //JsonObject areas = doc["areas"].to<JsonObject>();
+  // const ZoneRunConfig& gr = Zones::getGrassRunConfig();
+  // JsonObject grass = areas["grass"].to<JsonObject>();
+  // grass["running"]         = isGrassIrrigating();
+
+  controllerConfig.fillingEnabled           = doc["filling"]["enabled"] | false;
   controllerConfig.fillingMaxMinutes        = doc["filling"]["max_minutes"]                | FILLING_MAX_MINUTES;
   controllerConfig.leakageDetectorThreshold = doc["filling"]["leakage_detector_threshold"] | LEAKAGE_DETECTOR_THRESHOLD;
   controllerConfig.levelFilteringSeconds    = doc["filling"]["level_filtering_seconds"]    | LEVEL_FILTERING_SECONDS;
@@ -295,15 +300,14 @@ void showStates() {
 
 void printTestValues(const JsonDocument& doc) {
   // Read values
-  const char* deviceName = doc["device_name"];
-  const int interval = doc["interval"];
-  const bool enabled = doc["enabled"];
+  const char* deviceName = doc["device_name"] | "unknown";
 
   // Print values
   Serial.println("Config loaded:");
-  Serial.printf("  - Device Name: %s\n", deviceName != nullptr ? deviceName : "Unknown");
-  Serial.printf("  - Number of Grass Zones: %d\n", controllerConfig.numberOfGrassZones);
-  Serial.printf("  - Enabled: %s\n", enabled ? "true" : "false");
+  Serial.printf(" - Device Name: %s\n", deviceName);
+  Serial.printf(" - Filling %s\n", controllerConfig.fillingEnabled ? "Enabled" : "Disabled");
+  Serial.printf(" - Filling max minutes: %d\n", controllerConfig.fillingMaxMinutes);
+  Serial.printf(" - Number of Grass Zones: %d\n", controllerConfig.numberOfGrassZones);
 }
 
 void setup() {
@@ -321,7 +325,6 @@ void setup() {
   loadJsonFile(appConfigJson, "/config/app_config.json");
   applyAppConfig(appConfigJson);
   printTestValues(appConfigJson);
-  Serial.printf("  - Filling max minutes: %d\n", controllerConfig.fillingMaxMinutes);
 
   // Load areas configuration
   if (Areas::loadAreasConfig(appConfigJson, areas, 2, numAreas)) {
@@ -449,10 +452,12 @@ bool isGrassIrrigating() { return grassIrrigationRequested; }
 bool isDripIrrigating()  { return dripIrrigationRequested; }
 
 void startFilling() {
-  fillingRequested = true;
-  fillingEnabled = !level_4;
-  lastTimeFillingRequested = millis();
-  leakageDetectorCounter = 0;
+  if (controllerConfig.fillingEnabled) {
+    fillingRequested = true;
+    fillingEnabled = !level_4;
+    lastTimeFillingRequested = millis();
+    leakageDetectorCounter = 0;
+  }
 }
 
 void stopFilling() {
@@ -628,7 +633,7 @@ void loop() {
     }
 
     if (fillingRequested && ((currentTime - lastTimeFillingRequested) >= fillingMaxMs)) {
-      fillingRequested = false;
+      stopFilling();
       Serial.println("Filling completed in " + String(fillingMaxMs / 60000UL) + " minutes");
     }
     #ifdef LEVEL_SIMULATOR
@@ -861,7 +866,6 @@ void handleButtons() {
         if (!fillingRequested) {
           lastTimeFillingRequested = millis();
           fillingMaxMs = controllerConfig.fillingMaxMinutes / (level_2 ? 2 : level_3 ? 3 : 1) * 60 * 1000UL;
-          fillingRequested = true;
           startFilling();
           websocketNotifyHardwareCommand("start", "filling");
         } else if (millis() - lastTimeFillingRequested < 3000UL) {

@@ -521,7 +521,7 @@ bool handleCommand(const String& action, const String& target, JsonVariantConst 
     if (si < 0 || si >= 8) {
       outCode = "bad_request"; outMsg = "scheduleIndex missing or out of range"; return false;
     }
-    return fireSchedule((norm == "grass") ? 0 : 1, si, outCode, outMsg);
+    return fireSchedule((norm == "grass") ? 0 : 1, (int8_t)si, outCode, outMsg);
   }
 
   if (action == "set_group") {
@@ -581,9 +581,9 @@ void checkSchedules() {
   for (uint8_t ai = 0; ai < NUM_SCHED_AREAS; ai++) {
     if (isPaused(*pauseRefs[ai])) continue;
 
-    if (ai == 0 && isGrassIrrigating()) continue;
-    if (ai == 1 && isDripIrrigating()) continue;
-    if (ai == 2 && isFillingActive()) continue;
+    if (ai == 0 && (isGrassIrrigating())) continue;
+    if (ai == 1 && (isDripIrrigating())) continue;
+    if (ai == 2 && (!controllerConfig.fillingEnabled || isFillingActive())) continue;
 
     const ParsedArea& pa = gSchedCache.areas[ai];
     if (!pa.enabled) continue;
@@ -760,6 +760,19 @@ void rebuildScheduleCache() {
     ParsedArea& pa = gSchedCache.areas[ai];
     pa.enabled = area["enabled"] | true;
 
+    // If this area is currently disarmed (a run is in progress), sync the stashed
+    // original to the user's newly saved value so restoreAreaSchedule honours their
+    // intent rather than the pre-run state. Keep live pa.enabled = false for now so
+    // the running session is not double-fired.
+    {
+      SchedDisarmState* dst[] = {&gDisarmGrass, &gDisarmDrip, &gDisarmFilling};
+      if (dst[ai]->armed) {
+        dst[ai]->original = pa.enabled;
+        writeDisarmStash(areaId, pa.enabled);
+        pa.enabled = false;
+      }
+    }
+
     JsonArrayConst schedules = area["schedules"].as<JsonArrayConst>();
     if (schedules.isNull()) {
       Serial.printf("Bad schedules json for area id: %s\n", areaId);
@@ -778,7 +791,7 @@ void rebuildScheduleCache() {
       ps.daysMask = 0;
       JsonArrayConst days = sched["daysOfWeek"].as<JsonArrayConst>();
       for (JsonVariantConst d : days) {
-        uint8_t dow = d.as<uint8_t>();
+        auto dow = d.as<uint8_t>();
         if (dow >= 1 && dow <= 7) ps.daysMask |= (1 << dow);
       }
 
@@ -832,10 +845,10 @@ void websocketNotifyHardwareCommand(const char* action, const char* target, int 
   broadcastStatusIfChanged(true);
 }
 
-void setupWebSocketProtocol(AsyncWebServer& server) {
+void setupWebSocketProtocol(AsyncWebServer& webServer) {
   recoverDisarmOnBoot();
   gWs.onEvent(onWsEvent);
-  server.addHandler(&gWs);
+  webServer.addHandler(&gWs);
 }
 
 void websocketProtocolLoop() {

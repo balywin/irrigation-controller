@@ -7,15 +7,14 @@
 
 bool initFs() {
   bool res = LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED, "/spiffs");
-  if (!res) {
-    Serial.println(res ? "LittleFS mounted." : "LittleFS Mount Failed");
-  }
-  Serial.printf("Total: %llu bytes\n", LittleFS.totalBytes());
-  Serial.printf("Used:  %llu bytes\n", LittleFS.usedBytes());
+  Serial.printf("LittleFS ");
+  if (res) Serial.printf("Mounted:  Total: %u KB, Used: %u KB\n", LittleFS.totalBytes() / 1024, LittleFS.usedBytes() / 1024);
+  else Serial.println("Mount Failed!");
+  Serial.println("--------------------------");
   return res;
 }
 
-bool loadJsonFile(JsonDocument& doc, String fileName) {
+bool loadJsonFile(JsonDocument& doc, const String& fileName) {
   File file = LittleFS.open(fileName, "r");
   if (!file || file.isDirectory()) {
     Serial.println("Failed to open file " + fileName);

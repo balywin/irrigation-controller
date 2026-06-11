@@ -26,6 +26,9 @@
 #define PRESSURE_SCAN_PERIOD_MS   (200UL)
 
 typedef struct ControllerConfig {
+    bool    fillingEnabled = false;
+    bool    grassEnabled = false;
+    bool    dripEnabled = false;
     uint16_t fillingMaxMinutes = FILLING_MAX_MINUTES;                       // Maximum filling time in minutes
     uint16_t grassMaxMinutes   = GRASS_MAX_MINUTES;                         // Maximum grass irrigation time in minutes
     uint16_t dripMaxMinutes    = DRIP_MAX_MINUTES;                          // Maximum drip irrigation time in minutes
