@@ -555,16 +555,13 @@ bool getDripMainValveActive() { return getDripMainValve(); }
 
 void loop() {
   if (checkConnection()) {       // If just got connected
-    setup_NTP();  // This also updates the time
-    Serial.println("NTP setup complete.");
-    if (ntp.epoch() > (24 * 60 * 60)) {
-      adjustRtc(&ntp);
-    }
+    setup_NTP();
+    Serial.println("NTP setup complete. Sync pending...");
   }
   if (getNetworkIsConnected() && ntp.update()) {
     Serial.print("Time synced: " + String(ntp.formattedTime("%T")) + " , ");
     adjustRtc(&ntp);
-    ntp.updateInterval(60 * 60 * 1000);     // initially on 1m, after the time is set update the interval to 1h
+    ntp.updateInterval(60 * 60 * 1000);     // after successful sync switch to 1h interval
   }
   currentTime = millis();
   if ((currentTime - lastTimeShowTime) >= (TIME_UPDATE_PERIOD_MS/(2-uint8_t(timeSet)))) {
@@ -750,7 +747,9 @@ bool getInput(uint8_t input_number) {
 void setup_NTP() {
   ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
   ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)
+  ntp.stop();   // close existing UDP socket so begin() opens a clean one
   ntp.begin();
+  ntp.updateInterval(1000);  // reset to 1-sec so loop syncs promptly
 }
 
 void adjustRtc(NTP *ntp_v) {

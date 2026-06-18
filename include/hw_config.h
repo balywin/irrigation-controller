@@ -4,7 +4,7 @@
 //#define PRESSURE_SENSOR
 
 #define OLED_SSD1306
-#define WIFI_NO_ETHERNET
+//#define WIFI_NO_ETHERNET
 
 #ifdef DEV_BOARD_OLED
   #define I2C_SDA 5
@@ -60,10 +60,10 @@
 #define DRIP_ZONE_3         6
 
 // Grass Magentic Valves Output Numbers
-#define GRASS_ZONE_1       13
-#define GRASS_ZONE_2       14
-#define GRASS_ZONE_3       12
-#define GRASS_ZONE_4        9
+#define GRASS_ZONE_1       14
+#define GRASS_ZONE_2       12
+#define GRASS_ZONE_3        9
+#define GRASS_ZONE_4       13
 #define GRASS_ZONE_5       11
 #define GRASS_ZONE_6       10
 

@@ -142,7 +142,7 @@ IPAddress getNetworkLocalIp() {
 
 bool getNetworkIsConnected() {
   #ifdef WIFI_NO_ETHERNET
-    return WiFi.isConnected();
+    return getNetworkLocalIp() != IPAddress(0, 0, 0, 0);
   #else
     return WT32_ETH01_isConnected();
   #endif
