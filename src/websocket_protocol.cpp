@@ -221,6 +221,8 @@ String buildStatusJson() {
   device["heap"] = ESP.getFreeHeap();
   int rssi = getNetworkRssi();
   if (rssi != 0) device["rssi"] = rssi;
+  String t = getControllerTimeStr();
+  if (t.length()) device["time"] = t;
 
   JsonObject sensors = data["sensors"].to<JsonObject>();
   sensors["waterLevel"] = getWaterLevelPercent();

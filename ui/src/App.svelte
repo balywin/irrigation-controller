@@ -21,6 +21,7 @@
   let areas = $derived(appConfig?.areas ?? []);
   let waterLevel = $derived(ws.status?.sensors?.waterLevel ?? null);
   let wifiRssi = $derived(ws.status?.device?.rssi ?? null);
+  let controllerTime = $derived(ws.status?.device?.time ?? null);
 
   let manualZones = $state({});
 
@@ -310,6 +311,7 @@
     {/if}
     <button class:active={activeTab === 'settings'} onclick={() => activeTab = 'settings'}>Settings</button>
     <button class:active={activeTab === 'firmware'} onclick={() => activeTab = 'firmware'}>Firmware</button>
+    <span class="controller-clock">{controllerTime ?? '--:--:--'}</span>
   </nav>
 
   {#if configError}

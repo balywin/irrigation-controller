@@ -99,6 +99,7 @@ void handleButtons();
 void handleLevelSwitches();
 void setup_NTP();
 void adjustRtc(NTP *ntp_v);
+String getControllerTimeStr();
 void applyConfig();
 void checkForDefects();
 void showDiagInfo();
