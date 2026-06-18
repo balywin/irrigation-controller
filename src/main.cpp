@@ -764,6 +764,19 @@ void adjustRtc(NTP *ntp_v) {
     timeSet = true;
 }
 
+String getControllerTimeStr() {
+  char buf[9];
+  if (rtcReady) {
+    DateTime now = rtc.now();
+    snprintf(buf, sizeof(buf), "%02u:%02u:%02u", now.hour(), now.minute(), now.second());
+  } else if (timeSet) {
+    snprintf(buf, sizeof(buf), "%02u:%02u:%02u", (uint8_t)ntp.hours(), (uint8_t)ntp.minutes(), (uint8_t)ntp.seconds());
+  } else {
+    return String();
+  }
+  return String(buf);
+}
+
 bool getFilteredInput(uint8_t inputNumber) {
   if ((inputNumber < 1) || (inputNumber > 16)) return false;
   return iFiltered & (1 << (inputNumber - 1));
