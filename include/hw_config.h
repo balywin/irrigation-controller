@@ -68,8 +68,8 @@
 #define GRASS_ZONE_6       10
 
 // Main Water Supply Valves Output Numbers
-#define MAIN_VALVE_DRIP    15        // Main valve of drip system  - from Jecod DCS 1200
-#define MAIN_VALVE_GRASS   16        // Main valve of grass system - from Gardena 4100
+#define MAIN_VALVE_DRIP    15        // Main valve of drip system  - on the pipe connected to Jecod DCS 1200
+#define MAIN_VALVE_GRASS   16        // Main valve of grass system - on the pipe connected to Gardena 4100
 
 // Diagnostic flags
 #define NO_DEFECT                   0

@@ -5,19 +5,16 @@
 #include "schedule_cache.h"
 
 #define DEBUG_ETHERNET_WEBSERVER_PORT       Serial
-#define NTP_DBG_PORT                        Serial
 
 // Debug Level from 0 to 4
 #define _ETHERNET_WEBSERVER_LOGLEVEL_ 3
-#define _NTP_LOGLEVEL_                3
 
-#include <NTP.h>
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
 #endif
-#include <WiFiUdp.h>
 #include <RTClib.h>
 #include <HX710AB.h>
+#include <ctime>
 
 #include "i2c/inout.h"
 #include "i2c/oled.h"
@@ -27,8 +24,6 @@
 #include "areas.h"
 
 RTC_DS3231 rtc;
-WiFiUDP ntpUDP;
-NTP ntp(ntpUDP);
 
 HX710B pressureSensor(HX_DAT_PIN, HX_SCK_PIN);
 
@@ -98,7 +93,27 @@ uint16_t lastButState = BUTTONS_MASK;
 
 bool timeSet = false;
 bool rtcReady = false;
+bool rtcTimeValid = false;
+bool systemTimeValid = false;
+bool timeSyncConfigured = false;
+time_t lastRtcAdjustedEpoch = 0;
 bool timeBlink = false;
+
+const time_t MIN_VALID_EPOCH = 1609459200;  // 2021-01-01: reject unset ESP32 epoch.
+
+bool getSystemLocalTime(struct tm& timeinfo, time_t* epochOut = nullptr) {
+  time_t nowEpoch = time(nullptr);
+  if (nowEpoch < MIN_VALID_EPOCH) {
+    return false;
+  }
+  if (localtime_r(&nowEpoch, &timeinfo) == nullptr) {
+    return false;
+  }
+  if (epochOut) {
+    *epochOut = nowEpoch;
+  }
+  return true;
+}
 
 JsonDocument appConfigJson;
 JsonDocument scheduleJson;
@@ -185,11 +200,21 @@ void showTime() {
   char tm[12];
   char temp[24];
   char pcf_status = pcf_init_code && timeBlink ? 'E' : ' ';
-  if (rtcReady) {
-    sprintf(tm, "%02u:%02u:%02u %c", rtc.now().hour(), rtc.now().minute(), rtc.now().second(), pcf_status);
+  if (rtcTimeValid) {
+    DateTime now = rtc.now();
+    sprintf(tm, "%02u:%02u:%02u %c", now.hour(), now.minute(), now.second(), pcf_status);
     sprintf(temp, "%.1f%cC     ", rtc.getTemperature(), 0xF7);
+  } else if (systemTimeValid) {
+    struct tm timeInfo;
+    if (getSystemLocalTime(timeInfo)) {
+      sprintf(tm, "%02u:%02u:%02u %c", timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec, pcf_status);
+    } else {
+      systemTimeValid = false;
+      sprintf(tm, "          %c", pcf_status);
+    }
+    sprintf(temp, "--.-- %cC      ", 0xF7);
   } else {
-    sprintf(tm, "%02u:%02u:%02u %c", ntp.hours(), ntp.minutes(), ntp.seconds(), pcf_status);
+    sprintf(tm, "          %c", pcf_status);
     sprintf(temp, "--.-- %cC      ", 0xF7);
   }
   temp[11] = 0;
@@ -346,7 +371,11 @@ void setup() {
 
   if (rtc.begin()) {
     rtcReady = true;
-    timeSet = !rtc.lostPower();
+    rtcTimeValid = !rtc.lostPower();
+    timeSet = rtcTimeValid;
+    if (!rtcTimeValid) {
+      Serial.println("RTC has lost power; waiting for NTP sync before trusting RTC time.");
+    }
   } else {
     Serial.println(" *** Error initializing RTC ***");
     Serial.flush();
@@ -523,19 +552,23 @@ uint32_t getFillingRemainingMs() {
 }
 
 bool getRtcTime(uint8_t& hour, uint8_t& minute, uint8_t& dow) {
-  if (rtcReady) {
+  if (rtcTimeValid) {
     DateTime now = rtc.now();
     hour   = now.hour();
     minute = now.minute();
     dow    = now.dayOfTheWeek();  // 0=Sun, 1=Mon…6=Sat
     return true;
   }
-  if (timeSet) {
-    hour   = ntp.hours();
-    minute = ntp.minutes();
-    dow    = 0;  // NTP library doesn't expose weekday; caller should ignore dow
+
+  struct tm timeInfo;
+  if (systemTimeValid && getSystemLocalTime(timeInfo)) {
+    hour   = timeInfo.tm_hour;
+    minute = timeInfo.tm_min;
+    dow    = timeInfo.tm_wday;  // 0=Sun, 1=Mon…6=Sat
     return true;
   }
+
+  systemTimeValid = false;
   return false;
 }
 
@@ -555,14 +588,13 @@ bool getDripMainValveActive() { return getDripMainValve(); }
 
 void loop() {
   if (checkConnection()) {       // If just got connected
-    setup_NTP();
-    Serial.println("NTP setup complete. Sync pending...");
+    setupTimeSync();
+    Serial.println("Native NTP setup complete. Sync pending...");
   }
-  if (getNetworkIsConnected() && ntp.update()) {
-    Serial.print("Time synced: " + String(ntp.formattedTime("%T")) + " , ");
-    adjustRtc(&ntp);
-    ntp.updateInterval(60 * 60 * 1000);     // after successful sync switch to 1h interval
+  if (getNetworkIsConnected()) {
+    syncTimeFromNtp();
   }
+  timeSet = rtcTimeValid || systemTimeValid;
   currentTime = millis();
   if ((currentTime - lastTimeShowTime) >= (TIME_UPDATE_PERIOD_MS/(2-uint8_t(timeSet)))) {
     showTime();
@@ -597,6 +629,7 @@ void loop() {
           if ((currentTime - lastTimeGrassZoneSwitched) >= switchMs) {
             Zones::changeGrassZone(+1);
             lastTimeGrassZoneSwitched = currentTime;
+            Serial.println("Grass → zone " + String(grassRun.activeIdx));
           }
           for (uint8_t i = 1; i < controllerConfig.numberOfGrassZones; i++)
             setOutput(grassZones[i], i != Zones::getGrassZoneIndex());
@@ -685,29 +718,33 @@ void loop() {
 }
 
 void controlOutputs() {
-  if (!pcf_init_code) {
-    setPumpWell(fillingRequested && fillingEnabled);
-  }
-
+  // Grass states
   bool grassIrrigationState = grassIrrigationRequested && !drainingDisabled;
   if (grassIrrigationState != prevGrassIrrigationState) {
     if (grassIrrigationState) grassPumpStartTime = millis();
     prevGrassIrrigationState = grassIrrigationState;
   }
-  bool grassDelayPassed = (millis() - grassPumpStartTime > GRASS_PUMP_START_DELAY_SECONDS * 1000UL);
-  if (!pcf_init_code) {
-    setGrassMainValve(grassIrrigationState);
-    setPumpGrass(grassIrrigationState && grassDelayPassed);
-  }
 
+  // Drip states
   bool dripIrrigationState = dripIrrigationRequested && !drainingDisabled;
   if (dripIrrigationState != prevDripIrrigationState) {
     if (dripIrrigationState) dripPumpStartTime = millis();
     prevDripIrrigationState = dripIrrigationState;
   }
+
   if (!pcf_init_code) {
+    // Filling Pump
+    setPumpWell(fillingRequested && fillingEnabled);
+
+    // Grass Valve & Pump
+    bool grassDelayPassed = (millis() - grassPumpStartTime > GRASS_PUMP_START_DELAY_SECONDS * 1000UL);
+    setGrassMainValve(grassIrrigationState);
+    setPumpGrass(grassIrrigationState && grassDelayPassed);
+
+    // Drip Valve & Pump
+    bool dripDelayPassed = (millis() - dripPumpStartTime > DRIP_PUMP_START_DELAY_SECONDS * 1000UL);
     setDripMainValve(dripIrrigationState);
-    setPumpDrip(dripIrrigationState);
+    setPumpDrip(dripIrrigationState && dripDelayPassed);
   }
 }
 
@@ -744,37 +781,68 @@ bool getInput(uint8_t input_number) {
     return pcf8574_I2.digitalRead(input_number - 9, true) ? true : false;
 }
 
-void setup_NTP() {
-  ntp.ruleDST("EEST", Last, Sun, Mar, 2, 180); // last sunday in march 2:00, timezone +180min (+2 GMT + 1h summertime offset)
-  ntp.ruleSTD("EET", Last, Sun, Oct, 3, 120);  // last sunday in october 3:00, timezone +120min (+2 GMT)
-  ntp.stop();   // close existing UDP socket so begin() opens a clean one
-  ntp.begin();
-  ntp.updateInterval(1000);  // reset to 1-sec so loop syncs promptly
+void setupTimeSync() {
+  // Europe/Athens: UTC+2 standard, UTC+3 daylight saving.
+  static const char* tzAthens = "EET-2EEST,M3.5.0/3,M10.5.0/4";
+  configTzTime(tzAthens, "pool.ntp.org", "time.nist.gov", "time.google.com");
+  timeSyncConfigured = true;
 }
 
-void adjustRtc(NTP *ntp_v) {
-    if (rtcReady) {
-      Serial.print("Adjusting RTC ... ");
-      rtc.adjust(DateTime(ntp_v->year(), ntp_v->month(), ntp_v->day(), ntp_v->hours(), ntp_v->minutes(), ntp_v->seconds()));
-      Serial.println("done.");
-    } else {
-      Serial.println("RTC not ready to be adjusted.");
-    }
-//    rtc.adjust(ntp->epoch());
-    timeSet = true;
+void syncTimeFromNtp() {
+  if (!timeSyncConfigured) {
+    setupTimeSync();
+  }
+
+  struct tm timeInfo;
+  time_t nowEpoch;
+  if (!getSystemLocalTime(timeInfo, &nowEpoch)) {
+    return;
+  }
+
+  systemTimeValid = true;
+  if (lastRtcAdjustedEpoch != 0 && (nowEpoch - lastRtcAdjustedEpoch) < 3600) {
+    return;
+  }
+
+  char buf[9];
+  strftime(buf, sizeof(buf), "%T", &timeInfo);
+  Serial.print("Time synced: " + String(buf) + " , ");
+
+  if (rtcReady) {
+    Serial.print("Adjusting RTC ... ");
+    rtc.adjust(DateTime(
+      timeInfo.tm_year + 1900,
+      timeInfo.tm_mon + 1,
+      timeInfo.tm_mday,
+      timeInfo.tm_hour,
+      timeInfo.tm_min,
+      timeInfo.tm_sec
+    ));
+    rtcTimeValid = true;
+    Serial.println("done.");
+  } else {
+    Serial.println("RTC not ready to be adjusted.");
+  }
+  lastRtcAdjustedEpoch = nowEpoch;
+  timeSet = true;
 }
 
 String getControllerTimeStr() {
   char buf[9];
-  if (rtcReady) {
+  if (rtcTimeValid) {
     DateTime now = rtc.now();
     snprintf(buf, sizeof(buf), "%02u:%02u:%02u", now.hour(), now.minute(), now.second());
-  } else if (timeSet) {
-    snprintf(buf, sizeof(buf), "%02u:%02u:%02u", (uint8_t)ntp.hours(), (uint8_t)ntp.minutes(), (uint8_t)ntp.seconds());
+  } else if (systemTimeValid) {
+    struct tm timeInfo{};
+    if (!getSystemLocalTime(timeInfo)) {
+      systemTimeValid = false;
+      return {};
+    }
+    snprintf(buf, sizeof(buf), "%02u:%02u:%02u", timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
   } else {
-    return String();
+    return {};
   }
-  return String(buf);
+  return {buf};
 }
 
 bool getFilteredInput(uint8_t inputNumber) {
