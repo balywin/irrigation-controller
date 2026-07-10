@@ -85,7 +85,7 @@ int flagReadDi = 0;
 // Variable to store the HTTP request
 String header;
 uint32_t previousTime = 0;
-int8_t previousNetworkStatus = -1;
+uint8_t previousNetworkStatus = 0xFF;
 // ----------- Connection status ---------------------
 bool previousConnected = false;
 uint32_t serverStartedEventTime = 0;
@@ -158,18 +158,18 @@ String getNetworkMacAddress() {
 
 /* Returns true if just got connected, false if not */
 bool checkConnection() {
-  if (wifiReconnectCounter < WIFI_RECONNECT_COUNTER_THRESHOLD) {
-    wifiReconnectCounter++;
-    if (wifiReconnectCounter == WIFI_RECONNECT_COUNTER_THRESHOLD) {
-      networkInit();
-    }
-    return false;
-  }
   bool now_connected = getNetworkIsConnected();
-  int8_t networkStatus = getNetworkStatus();
+  uint8_t networkStatus = getNetworkStatus();
   String s;
   if (networkStatus != previousNetworkStatus) {
 #ifdef WIFI_NO_ETHERNET
+    if (wifiReconnectCounter < WIFI_RECONNECT_COUNTER_THRESHOLD) {
+      wifiReconnectCounter++;
+      if (wifiReconnectCounter == WIFI_RECONNECT_COUNTER_THRESHOLD) {
+        networkInit();
+      }
+      return false;
+    }
     switch (networkStatus) {
       case 0: s = "WiFi Idle"; break;
       case 1:

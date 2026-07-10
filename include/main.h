@@ -1,7 +1,6 @@
 #pragma once
 
 #include <ArduinoJson.h>
-#include <NTP.h>
 #include "hw_config.h"
 
 // Default configuration values
@@ -12,7 +11,8 @@
 
 #define LEVEL_FILTERING_SECONDS          10   // hold the filling 10 seconds on level down
 #define BUTTON_FILTERING_MS              50   // button debounce 50ms
-#define GRASS_PUMP_START_DELAY_SECONDS    7   // Open the Main Valve, then 7 seconds later start the pump
+#define GRASS_PUMP_START_DELAY_SECONDS    7   // Open the Grass Main Valve, then 7 seconds later start the pump
+#define DRIP_PUMP_START_DELAY_SECONDS     4   // Open the Drip  Main Valve, then 4 seconds later start the pump
 
 #define MAX_NUMBER_OF_GRASS_ZONES         6   // Number of grass irrigation zones
 #define MAX_NUMBER_OF_DRIP_ZONES         16   // Number of drip irrigation zones
@@ -97,8 +97,8 @@ void closeGrassValves();
 void closeDripValves();
 void handleButtons();
 void handleLevelSwitches();
-void setup_NTP();
-void adjustRtc(NTP *ntp_v);
+void setupTimeSync();
+void syncTimeFromNtp();
 String getControllerTimeStr();
 void applyConfig();
 void checkForDefects();
