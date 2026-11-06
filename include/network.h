@@ -7,6 +7,7 @@
   #define ETH_PHY_POWER   (-1)
   #define ETH_PHY_ADDR    (0)
 #else
+  #include "wifi_credentials.h"
   #define MAX_SSID_NUMBER (3)
   typedef struct WiFiCredentials {
     String ssid;

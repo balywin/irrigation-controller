@@ -16,9 +16,7 @@
 
   uint8_t ssid_index = 0;
   WiFiCredentials wifiCredentials[MAX_SSID_NUMBER] = {
-    {"balywin", "@Titi14#Papazov22%"},
-    {"VivacarM", "@Titi14#Papazov22%"},
-    {"Vivacar", "@Titi14#Papazov22%"}
+    WIFI_CREDENTIALS
   };
   const unsigned char conIcon[] PROGMEM = { // connected icon
     0x00, 0x3C, 0x42, 0x99, 0x24, 0x42, 0x18, 0x18
