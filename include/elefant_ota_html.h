@@ -1,4 +1,5 @@
 #pragma once
+
 #include <pgmspace.h>
 
 static const char ELEGANT_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
