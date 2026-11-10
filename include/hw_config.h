@@ -1,10 +1,15 @@
 #pragma once
 
 //#define DEV_BOARD_OLED
-//#define PRESSURE_SENSOR
+#define LCD_GMG12864
 
+#ifndef LCD_GMG12864
 #define OLED_SSD1306
-//#define WIFI_NO_ETHERNET
+//#define PRESSURE_SENSOR
+#endif
+#define WIFI_NO_ETHERNET
+
+//--------------------------------------------------------
 
 #ifdef DEV_BOARD_OLED
   #define I2C_SDA 5
@@ -15,6 +20,9 @@
   #endif
   #ifndef OLED_SSD1306
     #define OLED_SSD1306
+    #ifdef LCD_GMG12864
+      #undef LCD_GMG12864
+    #endif
   #endif
 #else
   #define I2C_SDA 4

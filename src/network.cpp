@@ -10,6 +10,9 @@
 
 #include <ESPAsyncWebServer.h>
 
+#define NWS_POS 16 // Network status horizontal position on OLED
+#define NWS_LINE 7 // Network status line on OLED
+
 #ifdef WIFI_NO_ETHERNET
   #include <WiFi.h>
   #include <WiFiClient.h>
@@ -117,7 +120,7 @@ void networkInit() {
     ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER);
     // Static IP, leave without this line to get IP via DHCP
     // bool config(IPAddress local_ip, IPAddress gateway, IPAddress subnet, IPAddress dns1 = 0, IPAddress dns2 = 0);
-    //  ETH.config(myIP, myGW, mySN, myDNS);oled.setCursor(0, 0);oled.println(F("Manual IP config."));oled.display();
+    //  ETH.config(myIP, myGW, mySN, myDNS);oled.setCursor(0, 0);oled.println(F("Manual IP config."));oled_send();
     Serial.println(" ... started.");
   #endif
 }
@@ -202,22 +205,24 @@ bool checkConnection() {
       if (s != "Disconnected") Serial.println(s);
       if (s == "Disconnected" || s == "Cable disconnected") {
 #ifndef WIFI_NO_ETHERNET
-        oled_show(1, s);
+        oled_clear_from(NWS_LINE, 1, NWS_POS);
+        oled_show_at(NWS_POS + 1, NWS_LINE, "Disc!");
 #endif
         oled_clear_from(1, 1, 19, 2);
-        oled.drawBitmap(120, 8, disconIcon, 8, 8, OLED_WHITE);
+        oled_drawBitmap(120, 8, disconIcon, 8, 8, OLED_WHITE);
         oled_clear_line(2);
       } else if (s == "WiFi Connected" || s == "Cable connected") {
 #ifdef WIFI_NO_ETHERNET
-        if (s == "WiFi Connected") {
-          oled_show(1, String(wifiCredentials[ssid_index].ssid));
+        if (s == "WiFi") {
+          oled_clear_from(NWS_LINE, 1, NWS_POS);
+          oled_show_at(NWS_POS - 1, NWS_LINE, String(wifiCredentials[ssid_index].ssid));
         }
 #endif
         oled_clear_from(1, 1, 19, 2);
-        oled.drawBitmap(120, 8, conIcon, 8, 8, OLED_WHITE);
+        oled_drawBitmap(120, 8, conIcon, 8, 8, OLED_WHITE);
       } else {
-        oled_clear_keep_last(1, 1, 1);
-        oled_show(1, s, 1, false);
+        oled_clear_from(NWS_LINE, 1, NWS_POS);
+        oled_show_at(NWS_POS, NWS_LINE, s, 1, false);
       }
     }
     previousNetworkStatus = networkStatus;
@@ -226,19 +231,22 @@ bool checkConnection() {
     if (!now_connected) {
 #ifndef WIFI_NO_ETHERNET
       if (networkStatus) {
-        s = "Waiting for DHCP...";
-        Serial.println(s);oled_show(1, s);
+        s = "Waiting for DHCP";
+        Serial.println(s);
+        s = "DHCP";
+        oled_clear_from(NWS_LINE, 1, NWS_POS);
+        oled_show_at(NWS_POS + 2, NWS_LINE, s);
       }
 #else
-      oled_clear_keep_last(1, 1, 1);
-      oled_show(1, s, 1, false);
+      oled_clear_from(NWS_LINE, 1, NWS_POS);
+      oled_show_at(NWS_POS, NWS_LINE, s, 1, false);
 #endif
     } else {
       s = String(ip2CharArray(getNetworkLocalIp()));
       Serial.println(s);
-      //s = String(ip2CharArrayShort(getNetworkLocalIp()));
-      oled_clear_keep_last(1, 1, 1);
-      oled_show(1, s, 1, false);
+      s = String(ip2CharArrayShort(getNetworkLocalIp()));
+      oled_clear_from(NWS_LINE, 1, NWS_POS);
+      oled_show_at(NWS_POS + 2, NWS_LINE, s, 1, false);
       Serial.println("Starting Web server ...");
       serverInit();
       s = "Server started.";
@@ -407,7 +415,7 @@ char* ip2CharArray(IPAddress ip) {
 
 char* ip2CharArrayShort(IPAddress ip) {
   static char a[18];
-  sprintf(a, "%d.%d ", ip[2], ip[3]);
+  sprintf(a, ".%d ", ip[3]);
   return a;
 }
 

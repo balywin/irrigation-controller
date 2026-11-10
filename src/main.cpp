@@ -25,7 +25,7 @@
 
 RTC_DS3231 rtc;
 
-HX710B pressureSensor(HX_DAT_PIN, HX_SCK_PIN);
+//HX710B pressureSensor(HX_DAT_PIN, HX_SCK_PIN);
 
 ControllerConfig controllerConfig;
 
@@ -203,7 +203,7 @@ void showTime() {
   if (rtcTimeValid) {
     DateTime now = rtc.now();
     sprintf(tm, "%02u:%02u:%02u %c", now.hour(), now.minute(), now.second(), pcf_status);
-    sprintf(temp, "%.1f%cC     ", rtc.getTemperature(), 0xF7);
+    sprintf(temp, "%.1f%cC     ", rtc.getTemperature(), 0xB0);
   } else if (systemTimeValid) {
     struct tm timeInfo;
     if (getSystemLocalTime(timeInfo)) {
@@ -212,14 +212,21 @@ void showTime() {
       systemTimeValid = false;
       sprintf(tm, "          %c", pcf_status);
     }
-    sprintf(temp, "--.-- %cC      ", 0xF7);
+    sprintf(temp, "--.-- %cC      ", 0xB0);
   } else {
     sprintf(tm, "          %c", pcf_status);
-    sprintf(temp, "--.-- %cC      ", 0xF7);
+    sprintf(temp, "--.-- %cC      ", 0xB0);
   }
   temp[11] = 0;
   oled_show_at(0, 0, temp);
-  oled_show_at(11, 0, timeSet || timeBlink ? tm : "           ");
+  oled_show_at(9, 0, timeSet || timeBlink ? tm : "           ");
+#ifdef WIFI_NO_ETHERNET
+  if (getNetworkIsConnected()) {
+    int rssi = WiFi.RSSI();
+    sprintf(temp, "%d", rssi);
+    oled_show_at(18 + (rssi > -100 ? 1 : 0), 0, temp);
+  }
+#endif
 
   bool grassPaused   = isAreaPausedByKey("grass");
   bool dripPaused    = isAreaPausedByKey("drip");
@@ -249,6 +256,7 @@ void showTime() {
     } else oled_clear_from(2, 1, 12, 6);
   }
   timeBlink = !timeBlink;
+  oled.sendBuffer();
 }
 
 void showStates() {
@@ -256,19 +264,14 @@ void showStates() {
   char states[24];
   char pumpStates[14];
 
-#ifdef WIFI_NO_ETHERNET
-  if (getNetworkIsConnected()) {
-    sprintf(states, "%d", WiFi.RSSI());
-    oled_show_at(16, 1, states);
-  }
-#endif
   if (millis() >= macDisplayUntil) {
 
     uint32_t irrigationRemainingMinutes = (millis() - lastTimeGrassIrrigationRequested) / 60000UL;
     sprintf(states, "%04X %d%d %d%d G%02d L%d ", iState, fillingRequested, fillingEnabled,
             grassIrrigationRequested, !drainingDisabled, irrigationRemainingMinutes, leakageDetectorCounter);
     //Serial.println(states);
-    oled_show(7, states, 1);
+    oled_clear_keep_last(7, 1, 7);
+    oled_show(7, states, 1, false);
   }
 
   bool grassPaused   = isAreaPausedByKey("grass");
@@ -315,8 +318,9 @@ void showStates() {
   }
 
   char level = level_4 ? '4' : level_3 ? '3' : level_2 ? '2' : level_1 ? '1' : '0';
-  oled.fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0); oled.drawBitmap(6 * 2 * 9 + 1, 8 * 3, bidon, 16, 24, OLED_WHITE);
-  oled.setCursor(6 * 2 * 9 + 4, 8 * 3 + 5); oled.setTextSize(2); oled.print(level); oled.display();
+  //oled_fillRect(6 * 2 * 9, 8 * 3, 20, 8 * 3, 0);
+  oled_drawBitmap(6 * 2 * 9 + 1, 8 * 3, bidon, 16, 24, OLED_WHITE);
+  oled.setCursor(6 * 2 * 9 + 4, 8 * 3 + 5); oled_setTextSize(2); oled.print(level); oled_send();
   if (prevLevel != level) {
     Serial.print("Tank Level: "); Serial.println(level);
     prevLevel = level;
@@ -382,8 +386,10 @@ void setup() {
   }
   // Init OLED
   Serial.println("Init OLED...");
-  init_oled();
-//  test_oled();
+  init_display();
+  test_oled();
+  delay(3000);
+  oled.clearBuffer();
   // Init PCFs
   pcf_init_code = init_pcfs();
 #ifndef DEV_BOARD_OLED 
@@ -391,7 +397,7 @@ void setup() {
 #endif
   String s = "PCFs... " + (pcf_init_code == 0 ? "OK" : "Error " + String(pcf_init_code, HEX));
   Serial.println(s);oled_show(0, s);
-  pressureSensor.begin();
+//  pressureSensor.begin();
   //s = "Init H710B... " + (code == HX710B_OK ? "OK" : "Error " + String(code, HEX));
   //Serial.println(s);oled_show(0, s);
 
@@ -399,9 +405,10 @@ void setup() {
 
   networkInit();
   {
-    oled_show(1, "Network started.");
+    oled_show(7, "N/w up");
     String macStr = getNetworkMacAddress();
-    oled_show(7, macStr.c_str());
+    oled_clear_keep_last(7, 1, 7);
+    oled_show(7, macStr.c_str(), 0);
     macDisplayUntil = millis() + 8000UL;
   }
 
